@@ -8,7 +8,7 @@ const bricolage = Bricolage_Grotesque({
 });
 
 export const metadata = {
-  title: 'xMachine (ML-Studio-Web) - End-to-End AI Pipeline Platform',
+  title: 'xMachine | ML-Studio-Web - End-to-End AI Pipeline Platform',
   description: 'Dynamic ETL, neural network layers builder, live browser-based training, and sandbox playground.',
 };
 
