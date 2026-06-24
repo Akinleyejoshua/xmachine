@@ -1,4 +1,4 @@
-# ML-Studio-Web
+# xMachine | ML-Studio-Web
 
 ML-Studio-Web is an end-to-end, browser-based AI Pipeline Platform built with Next.js (App Router), TypeScript, Zustand, Tailwind CSS, and MongoDB. The platform empowers developers and machine learning engineers to ingest data, chain ETL preprocessing actions, visually construct deep learning layers, monitor fitting telemetry in real time, run advanced bulk analytics, and download production-ready TensorFlow/Keras Python notebooks mapping the custom pipeline.
 
