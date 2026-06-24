@@ -273,8 +273,8 @@ history = model.fit(
   if (!currentProject) return null;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16 text-left">
-      <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-6 sm:p-8 space-y-8 shadow-sm">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-8 pb-16 text-left">
+      <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-4 sm:p-6 sm:p-8 space-y-6 sm:space-y-8 shadow-sm">
         
         {/* Title */}
         <div className="flex items-center gap-3 pb-6 border-b border-neutral-200 dark:border-neutral-800">
@@ -282,7 +282,7 @@ history = model.fit(
             <BookOpen className="w-6 h-6 text-royalblue-600 dark:text-royalblue-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-neutral-900 dark:text-white uppercase tracking-wider">Workspace User Manual</h1>
+            <h1 className="text-lg sm:text-2xl font-black text-neutral-900 dark:text-white uppercase tracking-wider">Workspace User Manual</h1>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">Comprehensive instructions, workflow lifecycle, and code export templates.</p>
           </div>
         </div>
@@ -406,7 +406,7 @@ history = model.fit(
         </div>
 
         {/* Footer Navigation */}
-        <div className="pt-6 flex justify-end border-t border-neutral-200 dark:border-neutral-800">
+        <div className="pt-6 flex flex-wrap justify-end gap-3 border-t border-neutral-200 dark:border-neutral-800">
           <button
             onClick={() => router.push('/etl')}
             className="flex items-center gap-2 px-4 py-2.5 bg-royalblue-600 hover:bg-royalblue-500 text-white rounded-lg text-xs font-semibold transition-all group shadow-sm"

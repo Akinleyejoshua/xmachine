@@ -12,6 +12,14 @@ export const metadata = {
   description: 'Dynamic ETL, neural network layers builder, live browser-based training, and sandbox playground.',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+};
+
 import { Navigation } from '../components/Navigation';
 
 export default function RootLayout({

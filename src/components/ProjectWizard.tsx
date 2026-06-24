@@ -197,11 +197,11 @@ export const ProjectWizard: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
-      <div className="w-full max-w-5xl bg-white dark:bg-black rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4">
+      <div className="w-full max-w-5xl bg-white dark:bg-black rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row" style={{ maxHeight: 'calc(100dvh - 24px)' }}>
         
         {/* Left Side: Welcome Panel & Listings */}
-        <div className="md:w-2/5 bg-neutral-50 dark:bg-neutral-900 p-6 flex flex-col justify-between overflow-y-auto">
+        <div className="md:w-2/5 bg-neutral-50 dark:bg-neutral-900 p-4 sm:p-6 flex flex-col justify-between overflow-y-auto max-h-[45vh] md:max-h-none">
           <div className="space-y-6 text-left">
             <div className="flex items-center gap-2">
               <div className="p-2 bg-royalblue-500/10 rounded-lg">
@@ -291,7 +291,7 @@ export const ProjectWizard: React.FC = () => {
         </div>
 
         {/* Right Side: Setup Form */}
-        <div className="flex-1 p-8 flex flex-col justify-between bg-white dark:bg-black overflow-y-auto">
+        <div className="flex-1 p-4 sm:p-8 flex flex-col justify-between bg-white dark:bg-black overflow-y-auto">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="text-left">
               <label htmlFor="project-name" className="block text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2">

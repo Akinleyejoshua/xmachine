@@ -1,3 +1,66 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Mobile viewport fix for iOS ─────────────────────────────────────── */
+@layer base {
+  html {
+    /* Use dynamic viewport height so bottom bars on mobile don't clip content */
+    height: -webkit-fill-available;
+  }
+  body {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
+}
+
+/* ── Scrollbar utilities ──────────────────────────────────────────────── */
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;     /* Firefox */
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;             /* Chrome, Safari, Opera */
+  }
+  
+  /* Thin scrollbar for containers */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(65, 105, 225, 0.3) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(65, 105, 225, 0.3);
+    border-radius: 2px;
+  }
+
+  /* Safe area padding for notched phones */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* ── Prevent text size adjustment on mobile ───────────────────────────── */
+@layer base {
+  * {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  /* Better tap targets on mobile */
+  button, a, input[type="checkbox"], input[type="radio"] {
+    touch-action: manipulation;
+  }
+  
+  /* Smooth scrolling globally */
+  html {
+    scroll-behavior: smooth;
+  }
+}

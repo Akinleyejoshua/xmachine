@@ -231,15 +231,15 @@ export const ETLCanvas: React.FC = () => {
   };
 
   return (
-    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-xl p-8 space-y-8">
+    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-xl p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8">
       
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start sm:items-center justify-between gap-3">
         <div className="text-left">
           <h3 className="text-sm font-bold tracking-wider uppercase text-neutral-900 dark:text-white">Module B: Data Ingestion &amp; ETL</h3>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Upload dataset, configure splits, transforms, and preprocessing pipeline.</p>
         </div>
-        <span className="px-3 py-1 bg-royalblue-500/10 text-royalblue-500 text-xs rounded-full font-mono font-medium">
+        <span className="px-3 py-1 bg-royalblue-500/10 text-royalblue-500 text-xs rounded-full font-mono font-medium shrink-0">
           {totalFiles > 0 ? `${totalFiles} files` : 'Ready for Ingestion'}
         </span>
       </div>
@@ -308,7 +308,7 @@ export const ETLCanvas: React.FC = () => {
       </div>
 
       {/* ── Section 2: Raw Data Ingestion + Transforms ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
 
         {/* Left: Upload */}
         <div className="space-y-4 text-left">
@@ -331,7 +331,7 @@ export const ETLCanvas: React.FC = () => {
                 <p className="text-sm text-neutral-700 dark:text-neutral-300 font-semibold">Drag &amp; drop files or folders</p>
                 <p className="text-xs text-neutral-500 mt-1">CSV, JSON, TXT, XML, or Image sequences</p>
               </div>
-              <div className="flex justify-center gap-3 pt-2">
+              <div className="flex flex-wrap justify-center gap-2 sm:gap-3 pt-2">
                 <label htmlFor="file-upload" className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-lg text-xs font-semibold cursor-pointer transition-all">
                   Browse Files
                 </label>
@@ -544,7 +544,7 @@ export const ETLCanvas: React.FC = () => {
         />
 
         {/* Loader options */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 pt-2">
           
           {/* Batch size */}
           <div className="space-y-1.5">

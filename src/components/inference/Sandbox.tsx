@@ -197,7 +197,7 @@ export const Sandbox: React.FC = () => {
   }, [bulkResults, classNames]);
 
   return (
-    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-6 sm:p-8 space-y-8">
+    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-4 sm:p-6 sm:p-8 space-y-6 sm:space-y-8">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -218,8 +218,8 @@ export const Sandbox: React.FC = () => {
         )}
       </div>
 
-      {/* Tab Switcher */}
-      <div className="flex gap-2 p-1 bg-neutral-100 dark:bg-neutral-950 rounded-xl w-fit border border-neutral-200 dark:border-neutral-850">
+      {/* Tab Switcher - scrollable on mobile */}
+      <div className="flex gap-1 sm:gap-2 p-1 bg-neutral-100 dark:bg-neutral-950 rounded-xl border border-neutral-200 dark:border-neutral-850 overflow-x-auto scrollbar-none w-full sm:w-fit">
         <button
           onClick={() => setActiveTab('single')}
           className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
@@ -451,8 +451,8 @@ export const Sandbox: React.FC = () => {
 
               </div>
 
-              {/* Performance subtabs switcher */}
-              <div className="flex gap-1.5 border-b border-neutral-200 dark:border-neutral-800 pb-2">
+              {/* Performance subtabs switcher - scrollable on mobile */}
+              <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800 pb-2 overflow-x-auto scrollbar-none">
                 <button 
                   onClick={() => setBulkSubTab('overview')}
                   className={`flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${

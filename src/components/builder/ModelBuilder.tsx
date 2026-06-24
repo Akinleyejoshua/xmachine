@@ -157,7 +157,7 @@ export const ModelBuilder: React.FC = () => {
   );
 
   return (
-    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-8 space-y-8">
+    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -190,11 +190,11 @@ export const ModelBuilder: React.FC = () => {
         ))}
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex gap-1 p-1 bg-neutral-100 dark:bg-neutral-950 rounded-xl w-fit">
+      {/* Tab Bar - scrollable on mobile */}
+      <div className="flex gap-1 p-1 bg-neutral-100 dark:bg-neutral-950 rounded-xl overflow-x-auto scrollbar-none w-full sm:w-fit">
         {TAB_BTN('layers',      'Layer Stack',     <Network className="w-3.5 h-3.5" />)}
-        {TAB_BTN('hyperparams', 'Hyperparameters', <Cpu className="w-3.5 h-3.5" />)}
-        {TAB_BTN('summary',     'Model Summary',   <BarChart3 className="w-3.5 h-3.5" />)}
+        {TAB_BTN('hyperparams', 'Hyperparams', <Cpu className="w-3.5 h-3.5" />)}
+        {TAB_BTN('summary',     'Summary',   <BarChart3 className="w-3.5 h-3.5" />)}
       </div>
 
       {/* ── TAB: Layers ── */}
@@ -518,7 +518,7 @@ export const ModelBuilder: React.FC = () => {
               </div>
 
               {/* Summary table */}
-              <div className="px-6 py-2 overflow-auto max-h-[400px]">
+              <div className="px-4 sm:px-6 py-2 overflow-auto max-h-[400px]">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="text-[9px] text-neutral-500 uppercase tracking-widest border-b border-white/5">

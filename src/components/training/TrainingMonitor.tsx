@@ -404,7 +404,7 @@ print("PyTorch model ready for scaling!")
   const yLabels = [1.0, 0.75, 0.5, 0.25, 0.0];
 
   return (
-    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-6 sm:p-8 space-y-8">
+    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-4 sm:p-6 sm:p-8 space-y-6 sm:space-y-8">
       
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -508,7 +508,7 @@ print("PyTorch model ready for scaling!")
       </div>
 
       {/* Grid of Workload Settings & Telemetry */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         
         {/* Left column: Hardware Accelerator Configuration */}
         <div className="lg:col-span-1 space-y-5 text-left">
@@ -645,9 +645,9 @@ print("PyTorch model ready for scaling!")
         {/* Right 2 columns: Interactive Tabbed Panel (Telemetry / Notebook logs / Python Script) */}
         <div className="lg:col-span-2 space-y-4">
           
-          {/* Tabs header */}
-          <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-2">
-            <div className="flex gap-2">
+          {/* Tabs header - scrollable on mobile */}
+          <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-2 gap-2 flex-wrap">
+            <div className="flex gap-1 overflow-x-auto scrollbar-none">
               <button 
                 onClick={() => setActiveTab('graph')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -706,7 +706,7 @@ print("PyTorch model ready for scaling!")
             <div className="bg-white dark:bg-neutral-950 rounded-2xl shadow-sm overflow-hidden border border-neutral-100 dark:border-neutral-900">
               
               {/* Legends */}
-              <div className="flex items-center gap-4 px-6 pt-5 pb-3 border-b border-neutral-50 dark:border-neutral-900">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4 px-4 sm:px-6 pt-5 pb-3 border-b border-neutral-50 dark:border-neutral-900">
                 <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">Metrics Trace</span>
                 <div className="flex items-center gap-3 text-[10px] font-mono text-neutral-400">
                   <span className="flex items-center gap-1.5">
