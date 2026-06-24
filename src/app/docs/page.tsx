@@ -36,132 +36,152 @@ export default function DocsPage() {
   const layers = modelConfig.layers;
   const hp = modelConfig.hyperparameters;
 
-  // Autogenerate PyTorch training script code
-  const pytorchScript = useMemo(() => {
-    let pyLayers = '';
-    let flatDimCalculated = false;
+  // Autogenerate TensorFlow/Keras training script code
+  const tensorflowScript = useMemo(() => {
+    let tfLayers = '';
 
     layers.forEach((layer, i) => {
       const cfg = layer.config;
       if (layer.type === 'conv2d') {
-        pyLayers += `        self.layer_${i} = nn.Sequential(\n`;
-        pyLayers += `            nn.Conv2d(${i === 0 ? '3' : 'prev_channels'}, ${cfg.filters || 32}, kernel_size=${cfg.kernelSize || 3}, padding='${cfg.padding || 'same'}', stride=${cfg.strides || 1}),\n`;
-        pyLayers += `            nn.BatchNorm2d(${cfg.filters || 32}),\n`;
-        pyLayers += `            nn.ReLU(),\n`;
+        tfLayers += `    layers.Conv2D(filters=${cfg.filters || 32}, kernel_size=${cfg.kernelSize || 3}, padding='${cfg.padding || 'same'}', strides=${cfg.strides || 1}, activation='${cfg.activation || 'relu'}'),\n`;
+        tfLayers += `    layers.BatchNormalization(),\n`;
         if (cfg.dropout && cfg.dropout > 0) {
-          pyLayers += `            nn.Dropout2d(p=${cfg.dropout}),\n`;
+          tfLayers += `    layers.Dropout(${cfg.dropout}),\n`;
         }
-        pyLayers += `        )\n`;
       } else if (layer.type === 'maxPooling2d') {
-        pyLayers += `        self.layer_${i} = nn.MaxPool2d(kernel_size=${cfg.poolSize || 2}, stride=${cfg.strides || 2})\n`;
+        tfLayers += `    layers.MaxPooling2D(pool_size=${cfg.poolSize || 2}, strides=${cfg.strides || 2}),\n`;
       } else if (layer.type === 'flatten') {
-        pyLayers += `        self.layer_${i} = nn.Flatten()\n`;
-        flatDimCalculated = true;
+        tfLayers += `    layers.Flatten(),\n`;
       } else if (layer.type === 'dense') {
-        pyLayers += `        self.layer_${i} = nn.Sequential(\n`;
-        pyLayers += `            nn.Linear(${!flatDimCalculated ? '512' : 'flat_features'}, ${cfg.units || 64}),\n`;
-        pyLayers += `            nn.ReLU(),\n`;
+        tfLayers += `    layers.Dense(units=${cfg.units || 64}, activation='${cfg.activation || 'relu'}'),\n`;
         if (cfg.dropout && cfg.dropout > 0) {
-          pyLayers += `            nn.Dropout(p=${cfg.dropout}),\n`;
+          tfLayers += `    layers.Dropout(${cfg.dropout}),\n`;
         }
-        pyLayers += `        )\n`;
       } else if (layer.type === 'dropout') {
-        pyLayers += `        self.layer_${i} = nn.Dropout(p=${cfg.rate || 0.25})\n`;
+        tfLayers += `    layers.Dropout(${cfg.rate || 0.25}),\n`;
       } else if (layer.type === 'batchNorm') {
-        pyLayers += `        self.layer_${i} = nn.BatchNorm1d(${cfg.numFeatures || 64}, momentum=${cfg.momentum || 0.1})\n`;
+        tfLayers += `    layers.BatchNormalization(momentum=${cfg.momentum || 0.99}, epsilon=${cfg.epsilon || 0.001}),\n`;
       } else if (layer.type === 'embedding') {
-        pyLayers += `        self.layer_${i} = nn.Embedding(${cfg.inputDim || 5000}, ${cfg.outputDim || 128})\n`;
+        tfLayers += `    layers.Embedding(input_dim=${cfg.inputDim || 5000}, output_dim=${cfg.outputDim || 128}, input_length=${cfg.inputLength || 100}),\n`;
       } else if (layer.type === 'lstm') {
-        pyLayers += `        self.layer_${i} = nn.LSTM(${i === 0 ? 'input_dim' : 'prev_dim'}, ${cfg.units || 64}, batch_first=True, dropout=${cfg.dropout || 0})\n`;
+        tfLayers += `    layers.LSTM(units=${cfg.units || 64}, return_sequences=${cfg.returnSequences ? 'True' : 'False'}, dropout=${cfg.dropout || 0}, recurrent_dropout=${cfg.recurrentDropout || 0}),\n`;
       } else if (layer.type === 'gru') {
-        pyLayers += `        self.layer_${i} = nn.GRU(${i === 0 ? 'input_dim' : 'prev_dim'}, ${cfg.units || 64}, batch_first=True, dropout=${cfg.dropout || 0})\n`;
+        tfLayers += `    layers.GRU(units=${cfg.units || 64}, return_sequences=${cfg.returnSequences ? 'True' : 'False'}, dropout=${cfg.dropout || 0}),\n`;
       } else if (layer.type === 'bidirectional') {
-        pyLayers += `        self.layer_${i} = nn.Bidirectional(nn.LSTM(${i === 0 ? 'input_dim' : 'prev_dim'}, ${cfg.units || 64}, batch_first=True))\n`;
+        tfLayers += `    layers.Bidirectional(layers.LSTM(units=${cfg.units || 64}, return_sequences=${cfg.returnSequences ? 'True' : 'False'})),\n`;
       }
     });
 
     const lossMap: Record<string, string> = {
-      categoricalCrossentropy: 'nn.CrossEntropyLoss()',
-      meanSquaredError: 'nn.MSELoss()',
-      binaryCrossentropy: 'nn.BCELoss()',
-      sparseCategoricalCrossentropy: 'nn.CrossEntropyLoss()'
+      categoricalCrossentropy: "losses.CategoricalCrossentropy()",
+      meanSquaredError: "losses.MeanSquaredError()",
+      binaryCrossentropy: "losses.BinaryCrossentropy()",
+      sparseCategoricalCrossentropy: "losses.SparseCategoricalCrossentropy()"
     };
 
     const optMap: Record<string, string> = {
-      adam: 'optim.Adam',
-      sgd: 'optim.SGD',
-      rmsprop: 'optim.RMSprop'
+      adam: "optimizers.Adam",
+      sgd: "optimizers.SGD",
+      rmsprop: "optimizers.RMSprop"
     };
 
+    const etlActions = (etl.actions || [])
+      .filter(a => a.enabled)
+      .map(a => `#  - ${a.type.toUpperCase()} (params: ${JSON.stringify(a.params)})`)
+      .join('\n');
+
     return `# ==========================================
-# PYTORCH AUTOGENERATED TRAINING SCRIPT
-# Generated by xMachine Live Telemetry Engine
+# TENSORFLOW / KERAS AUTOGENERATED WORKFLOW
+# Generated by xMachine Telemetry Engine
 # ==========================================
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+import tensorflow as tf
+from tensorflow.keras import layers, models, optimizers, losses, callbacks
+import numpy as np
 
-# 1. Device Configuration
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Training using device: {device}")
+# 1. Dataset ETL & Split Configuration
+# ------------------------------------------
+# Ingestion Format: ${etl.files.length > 0 ? etl.files[0].type.toUpperCase() : 'STANDARD'}
+# Total Files: ${etl.files.length}
+# Train Split: ${etl.splitRatio?.train || 80}%
+# Validation Split: ${etl.splitRatio?.val || 20}%
+# Test Split: ${etl.splitRatio?.test || 0}%
+# Batch Size: ${etl.batchSize || 32}
+# Shuffle: ${etl.shuffle ? 'True' : 'False'}
+# Stratified: ${etl.stratified ? 'True' : 'False'}
+# Random Seed: ${etl.seed || 42}
+#
+# Transforms pipelines configured:
+${etlActions || '#  - No active transformations configured.'}
+
+# Set random seed for reproducibility
+tf.random.set_seed(${etl.seed || 42})
+np.random.seed(${etl.seed || 42})
 
 # 2. Model Architecture definition
-class CustomModel(nn.Module):
-    def __init__(self, input_dim=3, flat_features=512, num_classes=${classNames.length}):
-        super(CustomModel, self).__init__()
+def build_model(input_shape=(224, 224, 3), num_classes=${classNames.length}):
+    model = models.Sequential([
+        # Input layer mapping domain specification
+        layers.Input(shape=input_shape),
         
-        # Sequentially constructed layers from model builder
-${pyLayers || '        self.features = nn.Identity()'}
-        # Output layer matching classes
-        self.output_layer = nn.Linear(${layers.length > 0 ? '64' : 'input_dim'}, num_classes)
+        # Layer stack from Model Builder
+${tfLayers || '        layers.Identity(),\n'}
+        # Output dense classification layer matching target classes
+        layers.Dense(num_classes, activation='softmax' if num_classes > 2 else 'sigmoid')
+    ])
+    return model
 
-    def forward(self, x):
-        # Forward pass workflow
-        for layer in [attr for attr in dir(self) if attr.startswith('layer_')]:
-            x = getattr(self, layer)(x)
-        return self.output_layer(x)
+model = build_model()
+model.summary()
 
-# 3. Model initialization
-model = CustomModel().to(device)
+# 3. Optimization and Compilation
+optimizer = ${optMap[hp.optimizer] || 'optimizers.Adam'}(learning_rate=${hp.learningRate})
+loss_fn = ${lossMap[hp.loss] || 'losses.CategoricalCrossentropy()'}
 
-# 4. Loss & Optimizer configuration
-criterion = ${lossMap[hp.loss] || 'nn.CrossEntropyLoss()'}
-optimizer = ${optMap[hp.optimizer] || 'optim.Adam'}(model.parameters(), lr=${hp.learningRate})
+model.compile(
+    optimizer=optimizer,
+    loss=loss_fn,
+    metrics=['accuracy']
+)
 
-# 5. Training Loop
-def train(model, dataloader, epochs=${hp.epochs}):
-    model.train()
-    for epoch in range(epochs):
-        running_loss = 0.0
-        correct = 0
-        total = 0
-        
-        for inputs, targets in dataloader:
-            inputs, targets = inputs.to(device), targets.to(device)
-            optimizer.zero_grad()
-            
-            # Forward pass
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            
-            # Backward pass
-            loss.backward()
-            optimizer.step()
-            
-            running_loss += loss.item() * inputs.size(0)
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
-            
-        epoch_loss = running_loss / len(dataloader.dataset)
-        epoch_acc = correct / total
-        print(f"Epoch {epoch+1}/{epochs} - loss: {epoch_loss:.4f} - acc: {epoch_acc:.4f}")
+# 4. Training Callbacks Configuration
+training_callbacks = []
 
-print("PyTorch model ready for scaling!")
+# Learning Rate Scheduler simulation
+# LR Scheduler type: Cosine/Step
+training_callbacks.append(callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3))
+
+# Early Stopping callback
+training_callbacks.append(
+    callbacks.EarlyStopping(
+        monitor='val_loss', 
+        patience=5, 
+        restore_best_weights=True
+    )
+)
+
+# 5. Pipeline Run Execution
+# mock dataset pipeline
+train_x = np.random.randn(256, 224, 224, 3)
+train_y = np.random.randint(0, ${classNames.length}, size=(256,))
+val_x = np.random.randn(64, 224, 224, 3)
+val_y = np.random.randint(0, ${classNames.length}, size=(64,))
+
+if ${classNames.length} > 2:
+    train_y = tf.one_hot(train_y, ${classNames.length})
+    val_y = tf.one_hot(val_y, ${classNames.length})
+
+print("Executing TensorFlow/Keras training workflow...")
+history = model.fit(
+    train_x, train_y,
+    validation_data=(val_x, val_y),
+    batch_size=${etl.batchSize || 32},
+    epochs=${hp.epochs},
+    callbacks=training_callbacks,
+    shuffle=${etl.shuffle ? 'True' : 'False'}
+)
 `;
-  }, [layers, hp, classNames]);
+  }, [layers, hp, classNames, etl]);
 
   // Generate ipynb file content
   const notebookJson = useMemo(() => {
@@ -170,7 +190,7 @@ print("PyTorch model ready for scaling!")
         cell_type: 'markdown',
         metadata: {},
         source: [
-          `# Project Notebook: ${currentProject?.name || 'Untitled'}\n`,
+          `# TensorFlow/Keras Workflow Notebook: ${currentProject?.name || 'Untitled'}\n`,
           `This notebook maps out the pipeline, ETL config, and custom architecture compiled inside **xMachine**.\n`,
           `* **Project Domain:** \`${currentProject?.domain}\`\n`,
           `* **Target Classes:** \`${classNames.join(', ')}\`\n`,
@@ -182,7 +202,7 @@ print("PyTorch model ready for scaling!")
         metadata: {},
         source: [
           `## 1. Imports and Setup\n`,
-          `We begin by importing standard Pytorch components and configuring GPU acceleration.`
+          `We begin by importing standard TensorFlow and Keras libraries.`
         ]
       },
       {
@@ -191,13 +211,11 @@ print("PyTorch model ready for scaling!")
         metadata: {},
         outputs: [],
         source: [
-          `import torch\n`,
-          `import torch.nn as nn\n`,
-          `import torch.optim as optim\n`,
-          `from torch.utils.data import DataLoader, TensorDataset\n`,
+          `import tensorflow as tf\n`,
+          `from tensorflow.keras import layers, models, optimizers, losses, callbacks\n`,
           `import numpy as np\n\n`,
-          `device = torch.device("cuda" if torch.cuda.is_available() else "cpu")\n`,
-          `print(f"Executing on device: {device}")`
+          `print(f"TensorFlow version: {tf.__version__}")\n`,
+          `print(f"GPUs Available: {tf.config.list_physical_devices('GPU')}")`
         ]
       },
       {
@@ -214,30 +232,7 @@ print("PyTorch model ready for scaling!")
         metadata: {},
         outputs: [],
         source: [
-          pytorchScript.split('\n').filter(line => !line.startsWith('import ') && !line.startsWith('# =') && !line.startsWith('# Generated')).map(l => l + '\n')
-        ]
-      },
-      {
-        cell_type: 'markdown',
-        metadata: {},
-        source: [
-          `## 3. Training and Evaluation Pipeline\n`,
-          `Run the fitting loops to train the model weight tensors.`
-        ]
-      },
-      {
-        cell_type: 'code',
-        execution_count: null,
-        metadata: {},
-        outputs: [],
-        source: [
-          `# Mocking DataLoader tensors matching batch size\n`,
-          `dummy_features = torch.randn(128, 3, 224, 224) if "${currentProject?.domain}".startswith("cv") else torch.randn(128, 100)\n`,
-          `dummy_targets = torch.randint(0, ${classNames.length}, (128,))\n`,
-          `dataset = TensorDataset(dummy_features, dummy_targets)\n`,
-          `dataloader = DataLoader(dataset, batch_size=${hp.batchSize}, shuffle=True)\n\n`,
-          `# Running execution loop\n`,
-          `train(model, dataloader, epochs=${hp.epochs})`
+          tensorflowScript.split('\n').filter(line => !line.startsWith('import ') && !line.startsWith('# =') && !line.startsWith('# Generated')).map(l => l + '\n')
         ]
       }
     ];
@@ -257,7 +252,7 @@ print("PyTorch model ready for scaling!")
       nbformat: 4,
       nbformat_minor: 2
     }, null, 2);
-  }, [currentProject, classNames, etl, hp, pytorchScript]);
+  }, [currentProject, classNames, etl, tensorflowScript]);
 
   const downloadFile = (content: string, fileName: string, contentType: string) => {
     const blob = new Blob([content], { type: contentType });
@@ -270,7 +265,7 @@ print("PyTorch model ready for scaling!")
   };
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(pytorchScript);
+    navigator.clipboard.writeText(tensorflowScript);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -367,7 +362,7 @@ print("PyTorch model ready for scaling!")
                   <h3 className="text-xs font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wider">Jupyter Notebook (.ipynb)</h3>
                 </div>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                  Export an interactive notebook containing step-by-step markdown explanations, training loop cell, PyTorch dataset loaders, and model definitions configured in your builder.
+                  Export an interactive notebook containing step-by-step markdown explanations, training loop cell, TensorFlow dataset loaders, and model definitions configured in your builder.
                 </p>
               </div>
               <button
@@ -387,7 +382,7 @@ print("PyTorch model ready for scaling!")
                   <h3 className="text-xs font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wider">Standalone Python Script (.py)</h3>
                 </div>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                  Download a production-grade Python script mapping out the full data transforms, learning rate schedulers, model weight parameters, and optimization pipelines.
+                  Download a production-grade Python script mapping out the full TensorFlow/Keras transformations, learning rate schedulers, model compile specifications, and optimization pipelines.
                 </p>
               </div>
               <div className="flex gap-2">
@@ -395,11 +390,11 @@ print("PyTorch model ready for scaling!")
                   onClick={copyToClipboard}
                   className="flex-1 py-2.5 bg-neutral-100 dark:bg-neutral-900 hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-lg flex items-center justify-center gap-1.5 text-xs font-semibold transition-all border border-neutral-200 dark:border-neutral-800"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copied ? 'Copied!' : 'Copy Script'}</span>
                 </button>
                 <button
-                  onClick={() => downloadFile(pytorchScript, `${currentProject.name.toLowerCase().replace(/\s+/g, '_')}_train.py`, 'text/plain')}
+                  onClick={() => downloadFile(tensorflowScript, `${currentProject.name.toLowerCase().replace(/\s+/g, '_')}_train.py`, 'text/plain')}
                   className="py-2.5 px-4 bg-royalblue-600 hover:bg-royalblue-500 text-white rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold transition-all shadow-sm"
                   title="Download Python Script"
                 >
