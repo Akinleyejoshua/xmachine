@@ -1,0 +1,986 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { usePipelineStore } from '../../store/usePipelineStore';
+import { 
+  Play, Pause, RotateCcw, Download, TrendingUp, BarChart2, 
+  Activity, Disc, GitCommitHorizontal, History, Cpu, ShieldAlert,
+  Terminal, Code2, Settings, Zap, HardDrive, RefreshCw, Copy, Check
+} from 'lucide-react';
+
+type ChartType = 'line' | 'area' | 'bar' | 'scatter' | 'smooth';
+
+const CHART_TYPES: { id: ChartType; label: string; icon: React.ReactNode }[] = [
+  { id: 'line',    label: 'Line',    icon: <TrendingUp className="w-3.5 h-3.5" /> },
+  { id: 'area',    label: 'Area',    icon: <Activity className="w-3.5 h-3.5" /> },
+  { id: 'bar',     label: 'Bar',     icon: <BarChart2 className="w-3.5 h-3.5" /> },
+  { id: 'scatter', label: 'Scatter', icon: <Disc className="w-3.5 h-3.5" /> },
+  { id: 'smooth',  label: 'Smooth',  icon: <GitCommitHorizontal className="w-3.5 h-3.5" /> },
+];
+
+export const TrainingMonitor: React.FC = () => {
+  const { 
+    trainingStatus, 
+    setTrainingStatus, 
+    metricsHistory, 
+    updateMetrics, 
+    currentEpoch, 
+    setCurrentEpoch,
+    checkpoints,
+    addCheckpoint,
+    clearTrainingState,
+    modelConfig,
+    etl,
+    currentProject 
+  } = usePipelineStore();
+
+  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
+  const [resumeFromCheckpoint, setResumeFromCheckpoint] = useState(false);
+  const [chartType, setChartType] = useState<ChartType>('smooth');
+  const [activeTab, setActiveTab] = useState<'graph' | 'logs' | 'script'>('graph');
+
+  // Scale & Engine settings
+  const [accelerator, setAccelerator] = useState<'cpu' | 'gpu' | 'tpu'>('gpu');
+  const [precision, setPrecision] = useState<'fp32' | 'fp16' | 'bf16'>('fp16');
+  const [earlyStopping, setEarlyStopping] = useState(true);
+  const [esPatience, setEsPatience] = useState(5);
+  const [lrScheduler, setLrScheduler] = useState<'constant' | 'step' | 'cosine'>('cosine');
+
+  // VRAM & Hardware telemetry simulation
+  const [vramUsage, setVramUsage] = useState(0);
+  const [gpuTemp, setGpuTemp] = useState(35);
+  const [utilization, setUtilization] = useState(0);
+
+  // Terminal log stream
+  const [logs, setLogs] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+  const consoleBottomRef = useRef<HTMLDivElement>(null);
+
+  if (!currentProject) return null;
+
+  const lastCheckpoint = checkpoints.length > 0
+    ? checkpoints.reduce((a, b) => (a.epoch > b.epoch ? a : b))
+    : null;
+
+  const maxEpochs = modelConfig.hyperparameters.epochs;
+  const initialLr = modelConfig.hyperparameters.learningRate || 0.001;
+  const canResume = !!lastCheckpoint;
+  const isIdle = trainingStatus === 'idle' || trainingStatus === 'paused' || trainingStatus === 'completed';
+
+  // Auto-scroll logs to bottom
+  useEffect(() => {
+    if (consoleBottomRef.current) {
+      consoleBottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs]);
+
+  // Telemetry updates simulation
+  useEffect(() => {
+    let tInterval: NodeJS.Timeout;
+    if (trainingStatus === 'training') {
+      tInterval = setInterval(() => {
+        const u = Math.floor(82 + Math.random() * 12);
+        setUtilization(u);
+        setGpuTemp(Math.floor(65 + Math.random() * 6));
+        setVramUsage(parseFloat((4.2 + Math.random() * 0.6).toFixed(1)));
+      }, 1000);
+    } else {
+      setUtilization(0);
+      setGpuTemp(35);
+      setVramUsage(0);
+    }
+    return () => clearInterval(tInterval);
+  }, [trainingStatus]);
+
+  const generatePyTorchScript = (): string => {
+    const layers = modelConfig.layers;
+    let pyLayers = '';
+    let flatDimCalculated = false;
+
+    layers.forEach((layer, i) => {
+      const cfg = layer.config;
+      if (layer.type === 'conv2d') {
+        pyLayers += `        self.layer_${i} = nn.Sequential(\n`;
+        pyLayers += `            nn.Conv2d(${i === 0 ? '3' : 'prev_channels'}, ${cfg.filters || 32}, kernel_size=${cfg.kernelSize || 3}, padding='${cfg.padding || 'same'}', stride=${cfg.strides || 1}),\n`;
+        pyLayers += `            nn.BatchNorm2d(${cfg.filters || 32}),\n`;
+        pyLayers += `            nn.ReLU(),\n`;
+        if (cfg.dropout && cfg.dropout > 0) {
+          pyLayers += `            nn.Dropout2d(p=${cfg.dropout}),\n`;
+        }
+        pyLayers += `        )\n`;
+      } else if (layer.type === 'maxPooling2d') {
+        pyLayers += `        self.layer_${i} = nn.MaxPool2d(kernel_size=${cfg.poolSize || 2}, stride=${cfg.strides || 2})\n`;
+      } else if (layer.type === 'flatten') {
+        pyLayers += `        self.layer_${i} = nn.Flatten()\n`;
+        flatDimCalculated = true;
+      } else if (layer.type === 'dense') {
+        pyLayers += `        self.layer_${i} = nn.Sequential(\n`;
+        pyLayers += `            nn.Linear(${!flatDimCalculated ? '512' : 'flat_features'}, ${cfg.units || 64}),\n`;
+        pyLayers += `            nn.ReLU(),\n`;
+        if (cfg.dropout && cfg.dropout > 0) {
+          pyLayers += `            nn.Dropout(p=${cfg.dropout}),\n`;
+        }
+        pyLayers += `        )\n`;
+      } else if (layer.type === 'dropout') {
+        pyLayers += `        self.layer_${i} = nn.Dropout(p=${cfg.rate || 0.25})\n`;
+      } else if (layer.type === 'batchNorm') {
+        pyLayers += `        self.layer_${i} = nn.BatchNorm1d(${cfg.numFeatures || 64}, momentum=${cfg.momentum || 0.1})\n`;
+      } else if (layer.type === 'embedding') {
+        pyLayers += `        self.layer_${i} = nn.Embedding(${cfg.inputDim || 5000}, ${cfg.outputDim || 128})\n`;
+      } else if (layer.type === 'lstm') {
+        pyLayers += `        self.layer_${i} = nn.LSTM(${i === 0 ? 'input_dim' : 'prev_dim'}, ${cfg.units || 64}, batch_first=True, dropout=${cfg.dropout || 0})\n`;
+      } else if (layer.type === 'gru') {
+        pyLayers += `        self.layer_${i} = nn.GRU(${i === 0 ? 'input_dim' : 'prev_dim'}, ${cfg.units || 64}, batch_first=True, dropout=${cfg.dropout || 0})\n`;
+      } else if (layer.type === 'bidirectional') {
+        pyLayers += `        self.layer_${i} = nn.Bidirectional(nn.LSTM(${i === 0 ? 'input_dim' : 'prev_dim'}, ${cfg.units || 64}, batch_first=True))\n`;
+      }
+    });
+
+    const lossMap: Record<string, string> = {
+      categoricalCrossentropy: 'nn.CrossEntropyLoss()',
+      meanSquaredError: 'nn.MSELoss()',
+      binaryCrossentropy: 'nn.BCELoss()',
+      sparseCategoricalCrossentropy: 'nn.CrossEntropyLoss()'
+    };
+    const ptLoss = lossMap[modelConfig.hyperparameters.loss] || 'nn.CrossEntropyLoss()';
+
+    const optMap: Record<string, string> = {
+      adam: 'optim.Adam',
+      sgd: 'optim.SGD',
+      rmsprop: 'optim.RMSprop'
+    };
+    const ptOpt = optMap[modelConfig.hyperparameters.optimizer] || 'optim.Adam';
+
+    return `# ==========================================
+# PYTORCH AUTOGENERATED TRAINING SCRIPT
+# Generated by xMachine Live Telemetry Engine
+# ==========================================
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+
+# 1. Device Configuration
+device = torch.device(${accelerator === 'gpu' ? "'cuda' if torch.cuda.is_available() else 'cpu'" : `'${accelerator}'`})
+print(f"Training using device: {device}")
+
+# 2. Model Architecture definition
+class CustomModel(nn.Module):
+    def __init__(self, input_dim=3, flat_features=512, num_classes=${etl.classNames?.length || 2}):
+        super(CustomModel, self).__init__()
+        
+        # Sequentially constructed layers from model builder
+${pyLayers}
+        # Output layer matching classes
+        self.output_layer = nn.Linear(${layers.length > 0 ? 'prev_dim_or_units' : 'input_dim'}, num_classes)
+
+    def forward(self, x):
+        # Forward pass workflow
+        for layer in [attr for attr in dir(self) if attr.startswith('layer_')]:
+            x = getattr(self, layer)(x)
+        return self.output_layer(x)
+
+# 3. Model initialization
+model = CustomModel().to(device)
+
+# 4. Loss & Optimizer configuration
+criterion = ${ptLoss}
+optimizer = ${ptOpt}(model.parameters(), lr=${initialLr})
+
+# 5. Learning Rate Scheduler
+${lrScheduler === 'cosine' 
+  ? `scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=${maxEpochs})` 
+  : lrScheduler === 'step' 
+    ? 'scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)'
+    : '# Constant Learning Rate (no scheduler)'}
+
+# 6. Training Pipeline Loop
+def train(model, dataloader, epochs=${maxEpochs}):
+    model.train()
+    for epoch in range(epochs):
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        
+        for inputs, targets in dataloader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            optimizer.zero_grad()
+            
+            # Forward pass
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            
+            # Backward pass & Optimize
+            loss.backward()
+            optimizer.step()
+            
+            running_loss += loss.item() * inputs.size(0)
+            _, predicted = outputs.max(1)
+            total += targets.size(0)
+            correct += predicted.eq(targets).sum().item()
+            
+        epoch_loss = running_loss / len(dataloader.dataset)
+        epoch_acc = correct / total
+        print(f"Epoch {epoch+1}/{epochs} - loss: {epoch_loss:.4f} - acc: {epoch_acc:.4f}")
+        
+        if '${lrScheduler}' != 'constant':
+            scheduler.step()
+
+print("PyTorch model ready for scaling!")
+`;
+  };
+
+  const copyScript = () => {
+    navigator.clipboard.writeText(generatePyTorchScript());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleStartTraining = () => {
+    if (trainingStatus === 'training') return;
+
+    const startEpoch = resumeFromCheckpoint && lastCheckpoint ? lastCheckpoint.epoch : 0;
+    const targetEpoch = resumeFromCheckpoint && lastCheckpoint
+      ? lastCheckpoint.epoch + maxEpochs
+      : maxEpochs;
+
+    if (!resumeFromCheckpoint || !lastCheckpoint) {
+      clearTrainingState();
+      setLogs([
+        `[INFO] Initializing PyTorch training pipeline on ${accelerator.toUpperCase()} accelerator...`,
+        `[INFO] Target classes: [${(etl.classNames || []).join(', ')}]`,
+        `[INFO] Precision configured: ${precision.toUpperCase()}`,
+        `[INFO] Optimizer: ${modelConfig.hyperparameters.optimizer.toUpperCase()} (lr=${initialLr})`,
+        `[INFO] LR Scheduler: ${lrScheduler.toUpperCase()}`,
+        `[INFO] Early Stopping: ${earlyStopping ? `ENABLED (patience=${esPatience})` : 'DISABLED'}`,
+        `[INFO] Building neural layer stack (${modelConfig.layers.length} modules)...`,
+        `----------------------------------------------------------------------`
+      ]);
+    } else {
+      setLogs(prev => [
+        ...prev,
+        `[RESUME] Continuing training from Epoch ${lastCheckpoint.epoch}.`,
+        `[RESUME] Loading weights & state dictionary successfully...`,
+        `[RESUME] Running optimizer calibration step...`,
+        `----------------------------------------------------------------------`
+      ]);
+    }
+
+    setTrainingStatus('training');
+    let epoch = startEpoch;
+
+    const id = setInterval(() => {
+      epoch += 1;
+      setCurrentEpoch(epoch);
+
+      // LR scheduler simulation
+      let currentLr = initialLr;
+      if (lrScheduler === 'cosine') {
+        currentLr = initialLr * (0.5 * (1 + Math.cos(Math.PI * epoch / targetEpoch)));
+      } else if (lrScheduler === 'step') {
+        currentLr = initialLr * Math.pow(0.5, Math.floor(epoch / 5));
+      }
+
+      const factor = 1 / (1 + epoch * 0.15);
+      const loss = parseFloat((0.8 * factor + Math.random() * 0.03).toFixed(4));
+      const accuracy = parseFloat((0.2 + (0.75 * (1 - factor)) + Math.random() * 0.02).toFixed(4));
+      const valLoss = parseFloat((0.85 * factor + Math.random() * 0.05).toFixed(4));
+      const valAccuracy = parseFloat((0.18 + (0.72 * (1 - factor)) + Math.random() * 0.03).toFixed(4));
+
+      updateMetrics({ epoch, loss, accuracy, valLoss, valAccuracy });
+
+      // Append logs
+      const timeMs = 400 + Math.floor(Math.random() * 120);
+      setLogs(prev => [
+        ...prev,
+        `Epoch ${epoch}/${targetEpoch} [==============================] - ${timeMs}ms/step - loss: ${loss.toFixed(4)} - accuracy: ${accuracy.toFixed(4)} - val_loss: ${valLoss.toFixed(4)} - val_accuracy: ${valAccuracy.toFixed(4)} - lr: ${currentLr.toFixed(6)}`
+      ]);
+
+      if (epoch % 2 === 0 || epoch === targetEpoch) {
+        addCheckpoint({
+          epoch,
+          timestamp: new Date().toLocaleTimeString(),
+          fileSize: Math.floor(1024 * 100 + Math.random() * 50 * 1024),
+          checkpointUrl: '#'
+        });
+        setLogs(prev => [
+          ...prev,
+          `[CHECKPOINT] Epoch ${epoch} weights saved successfully (vram: ${vramUsage}GB used)`
+        ]);
+      }
+
+      if (epoch >= targetEpoch) {
+        clearInterval(id);
+        setIntervalId(null);
+        setTrainingStatus('completed');
+        setLogs(prev => [
+          ...prev,
+          `----------------------------------------------------------------------`,
+          `[SUCCESS] Training process completed successfully. Target epoch reached.`,
+          `[SUCCESS] Final Metrics - Loss: ${loss.toFixed(4)} - Accuracy: ${accuracy.toFixed(4)}`
+        ]);
+      }
+    }, 1200);
+
+    setIntervalId(id);
+  };
+
+  const handlePauseTraining = () => {
+    if (intervalId) { clearInterval(intervalId); setIntervalId(null); }
+    setTrainingStatus('paused');
+    setLogs(prev => [...prev, `[PAUSED] Training suspended by operator.`]);
+  };
+
+  const handleResetTraining = () => {
+    if (intervalId) { clearInterval(intervalId); setIntervalId(null); }
+    setResumeFromCheckpoint(false);
+    clearTrainingState();
+    setLogs([]);
+  };
+
+  // ─── Chart geometry ────────────────────────────────────────────────
+  const W = 620, H = 220;
+  const PL = 44, PR = 20, PT = 16, PB = 8;
+  const plotW = W - PL - PR;
+  const plotH = H - PT - PB;
+  const n = metricsHistory.length;
+  const stepX = n > 1 ? plotW / (n - 1) : plotW;
+
+  const maxLoss = Math.max(...metricsHistory.map(h => h.loss), 1.0);
+
+  const getXY = (index: number, type: 'accuracy' | 'loss') => {
+    const x = PL + index * stepX;
+    const val = type === 'accuracy'
+      ? (metricsHistory[index].accuracy || 0)
+      : (metricsHistory[index].loss / maxLoss);
+    const y = H - PB - val * plotH;
+    return { x, y, val };
+  };
+
+  // Smooth cubic bezier path
+  const smoothPath = (type: 'accuracy' | 'loss') => {
+    if (n === 0) return '';
+    if (n === 1) {
+      const { x, y } = getXY(0, type);
+      return `M ${x} ${y}`;
+    }
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const { x, y } = getXY(i, type);
+      if (i === 0) {
+        d += `M ${x} ${y}`;
+      } else {
+        const prev = getXY(i - 1, type);
+        const cpx = (prev.x + x) / 2;
+        d += ` C ${cpx} ${prev.y}, ${cpx} ${y}, ${x} ${y}`;
+      }
+    }
+    return d;
+  };
+
+  const polyPoints = (type: 'accuracy' | 'loss') =>
+    metricsHistory.map((_, i) => {
+      const { x, y } = getXY(i, type);
+      return `${x},${y}`;
+    }).join(' ');
+
+  const areaPath = (type: 'accuracy' | 'loss', smooth = false) => {
+    if (n === 0) return '';
+    const base = H - PB;
+    if (smooth) {
+      const p = smoothPath(type);
+      const last = getXY(n - 1, type);
+      const first = getXY(0, type);
+      return `${p} L ${last.x} ${base} L ${first.x} ${base} Z`;
+    }
+    const pts = metricsHistory.map((_, i) => {
+      const { x, y } = getXY(i, type);
+      return `${x},${y}`;
+    });
+    const last = getXY(n - 1, type);
+    const first = getXY(0, type);
+    return `M ${first.x} ${first.y} L ${pts.join(' L ')} L ${last.x} ${base} L ${first.x} ${base} Z`;
+  };
+
+  const yLabels = [1.0, 0.75, 0.5, 0.25, 0.0];
+
+  return (
+    <div className="bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-6 sm:p-8 space-y-8">
+      
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="text-left">
+          <h3 className="text-sm font-bold tracking-wider uppercase text-neutral-900 dark:text-white">Module D: High-Scale Telemetry &amp; Execution</h3>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Scale training workloads using standard PyTorch executors and trace metrics.</p>
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Resume Toggle */}
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border border-neutral-200 dark:border-neutral-800 transition-all ${
+              canResume && isIdle
+                ? 'bg-white dark:bg-neutral-950 shadow-sm cursor-pointer'
+                : 'bg-neutral-100 dark:bg-neutral-950 opacity-40 cursor-not-allowed'
+            }`}
+            title={canResume ? `Resume from epoch ${lastCheckpoint!.epoch}` : 'No checkpoints available yet'}
+          >
+            <History className="w-3.5 h-3.5 text-royalblue-500" />
+            <span className="text-neutral-700 dark:text-neutral-300">Resume</span>
+            <button
+              onClick={() => canResume && isIdle && setResumeFromCheckpoint(v => !v)}
+              disabled={!canResume || !isIdle}
+              className={`relative inline-flex items-center h-4.5 w-8.5 rounded-full transition-colors ${
+                resumeFromCheckpoint && canResume ? 'bg-royalblue-600' : 'bg-neutral-200 dark:bg-neutral-800'
+              }`}
+            >
+              <span className={`inline-block w-3.5 h-3.5 bg-white rounded-full shadow transition-transform ${
+                resumeFromCheckpoint && canResume ? 'translate-x-[16px]' : 'translate-x-0.5'
+              }`} />
+            </button>
+          </div>
+
+          {trainingStatus !== 'training' ? (
+            <button
+              onClick={handleStartTraining}
+              className="px-4 py-2 bg-royalblue-600 hover:bg-royalblue-500 text-white rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all shadow-sm"
+            >
+              <Play className="w-3.5 h-3.5" />
+              {resumeFromCheckpoint && canResume ? 'Resume Scaling' : 'Run Executor'}
+            </button>
+          ) : (
+            <button
+              onClick={handlePauseTraining}
+              className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all"
+            >
+              <Pause className="w-3.5 h-3.5" /> Suspend
+            </button>
+          )}
+          <button
+            onClick={handleResetTraining}
+            className="p-2 bg-neutral-100 dark:bg-neutral-950 text-neutral-500 hover:text-neutral-900 dark:hover:text-white border border-neutral-200 dark:border-neutral-850 rounded-xl transition-all"
+            title="Reset training state"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Resume Info Banner */}
+      {resumeFromCheckpoint && lastCheckpoint && isIdle && (
+        <div className="bg-royalblue-500/10 border border-royalblue-500/20 rounded-xl px-4 py-3 flex items-center gap-3 text-left">
+          <History className="w-4 h-4 text-royalblue-500 shrink-0" />
+          <p className="text-xs text-neutral-700 dark:text-neutral-300">
+            Will resume from <span className="font-mono font-bold text-royalblue-500">Epoch {lastCheckpoint.epoch}</span>
+            {' '}→ append <span className="font-mono font-semibold">{maxEpochs}</span> more epochs, running to <span className="font-mono font-bold text-royalblue-500">Epoch {lastCheckpoint.epoch + maxEpochs}</span>.
+          </p>
+        </div>
+      )}
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-neutral-950 p-4 rounded-xl shadow-sm text-left border border-neutral-100 dark:border-neutral-900">
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Fitting Status</span>
+          <span className={`text-sm font-extrabold uppercase mt-1 inline-block ${
+            trainingStatus === 'training' ? 'text-emerald-500 animate-pulse' 
+            : trainingStatus === 'completed' ? 'text-royalblue-500' 
+            : 'text-neutral-500'
+          }`}>{trainingStatus}</span>
+        </div>
+        <div className="bg-white dark:bg-neutral-950 p-4 rounded-xl shadow-sm text-left border border-neutral-100 dark:border-neutral-900">
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Epoch Progress</span>
+          <span className="text-sm font-mono font-extrabold text-neutral-900 dark:text-white mt-1 inline-block">
+            {currentEpoch} <span className="text-xs text-neutral-400 font-normal font-sans">/ {resumeFromCheckpoint && lastCheckpoint ? lastCheckpoint.epoch + maxEpochs : maxEpochs}</span>
+          </span>
+        </div>
+        <div className="bg-white dark:bg-neutral-950 p-4 rounded-xl shadow-sm text-left border border-neutral-100 dark:border-neutral-900">
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Current Loss</span>
+          <span className="text-sm font-mono font-extrabold text-red-500 mt-1 inline-block">
+            {metricsHistory.length > 0 ? metricsHistory[metricsHistory.length - 1].loss.toFixed(4) : '—'}
+          </span>
+        </div>
+        <div className="bg-white dark:bg-neutral-950 p-4 rounded-xl shadow-sm text-left border border-neutral-100 dark:border-neutral-900">
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Current Accuracy</span>
+          <span className="text-sm font-mono font-extrabold text-royalblue-500 mt-1 inline-block">
+            {metricsHistory.length > 0 && metricsHistory[metricsHistory.length - 1].accuracy !== undefined 
+              ? metricsHistory[metricsHistory.length - 1].accuracy!.toFixed(4) 
+              : '—'}
+          </span>
+        </div>
+      </div>
+
+      {/* Grid of Workload Settings & Telemetry */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Left column: Hardware Accelerator Configuration */}
+        <div className="lg:col-span-1 space-y-5 text-left">
+          <div className="bg-white dark:bg-neutral-950 rounded-xl p-5 shadow-sm space-y-4 border border-neutral-100 dark:border-neutral-900">
+            <h4 className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+              <Settings className="w-4 h-4 text-royalblue-500" />
+              <span>Executor Workload</span>
+            </h4>
+            
+            {/* Accelerator type */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-neutral-500 flex items-center gap-1">
+                <Cpu className="w-3 h-3" /> Hardware Device
+              </label>
+              <select 
+                value={accelerator} 
+                onChange={e => setAccelerator(e.target.value as any)}
+                disabled={!isIdle}
+                className="w-full bg-neutral-50 dark:bg-neutral-900 rounded-lg px-2.5 py-2 text-xs text-neutral-800 dark:text-neutral-200 border border-neutral-100 dark:border-neutral-850 focus:outline-none"
+              >
+                <option value="gpu">NVIDIA CUDA / Apple MPS (GPU)</option>
+                <option value="cpu">Host Processor (CPU)</option>
+                <option value="tpu">Cloud Tensor Core (TPU)</option>
+              </select>
+            </div>
+
+            {/* Precision Select */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-neutral-500 flex items-center gap-1">
+                <Zap className="w-3 h-3" /> Execution Precision
+              </label>
+              <select 
+                value={precision} 
+                onChange={e => setPrecision(e.target.value as any)}
+                disabled={!isIdle}
+                className="w-full bg-neutral-50 dark:bg-neutral-900 rounded-lg px-2.5 py-2 text-xs text-neutral-800 dark:text-neutral-200 border border-neutral-100 dark:border-neutral-850 focus:outline-none"
+              >
+                <option value="fp16">AMP FP16 (Mixed Precision)</option>
+                <option value="fp32">FP32 (Single Precision)</option>
+                <option value="bf16">BF16 (Bfloat16 Optimization)</option>
+              </select>
+            </div>
+
+            {/* LR Decay Scheduler */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-neutral-500 flex items-center gap-1">
+                <RefreshCw className="w-3 h-3" /> Learning Rate Decay
+              </label>
+              <select 
+                value={lrScheduler} 
+                onChange={e => setLrScheduler(e.target.value as any)}
+                disabled={!isIdle}
+                className="w-full bg-neutral-50 dark:bg-neutral-900 rounded-lg px-2.5 py-2 text-xs text-neutral-800 dark:text-neutral-200 border border-neutral-100 dark:border-neutral-850 focus:outline-none"
+              >
+                <option value="cosine">Cosine Annealing Scheduler</option>
+                <option value="step">Step LR Scheduler (0.5x every 5 ep)</option>
+                <option value="constant">Constant (No Decay)</option>
+              </select>
+            </div>
+
+            {/* Early stopping option */}
+            <div className="pt-2 border-t border-neutral-100 dark:border-neutral-900 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-neutral-500">Early Stopping Monitor</span>
+                <button
+                  onClick={() => isIdle && setEarlyStopping(!earlyStopping)}
+                  disabled={!isIdle}
+                  className={`relative inline-flex items-center h-4 w-7 rounded-full transition-colors ${
+                    earlyStopping ? 'bg-royalblue-600' : 'bg-neutral-200 dark:bg-neutral-800'
+                  }`}
+                >
+                  <span className={`inline-block w-3 h-3 bg-white rounded-full transition-transform ${
+                    earlyStopping ? 'translate-x-3.5' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+
+              {earlyStopping && (
+                <div className="flex items-center justify-between bg-neutral-50 dark:bg-neutral-900/60 p-2 rounded-lg border border-neutral-100 dark:border-neutral-850">
+                  <span className="text-[10px] text-neutral-500">Patience (epochs)</span>
+                  <input 
+                    type="number" 
+                    value={esPatience} 
+                    onChange={e => setEsPatience(Math.max(1, parseInt(e.target.value) || 1))}
+                    disabled={!isIdle}
+                    className="w-12 bg-white dark:bg-neutral-950 text-center rounded border border-neutral-200 dark:border-neutral-800 text-[10px] py-0.5 focus:outline-none"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Live Device Telemetry Card */}
+          <div className="bg-white dark:bg-neutral-950 rounded-xl p-5 shadow-sm space-y-3 border border-neutral-100 dark:border-neutral-900">
+            <h4 className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-emerald-500" />
+              <span>Hardware Telemetry</span>
+            </h4>
+            
+            <div className="space-y-2.5 pt-1 text-xs">
+              {/* Utilization progress */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-neutral-500">Core Engine Load</span>
+                  <span className="font-mono text-neutral-800 dark:text-neutral-200 font-bold">{utilization}%</span>
+                </div>
+                <div className="w-full bg-neutral-100 dark:bg-neutral-900 h-1.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-emerald-500 h-full rounded-full transition-all duration-1000" 
+                    style={{ width: `${utilization}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* VRAM stats */}
+              <div className="flex justify-between items-center py-1.5 border-t border-neutral-100 dark:border-neutral-900">
+                <span className="text-neutral-500 text-[10px]">VRAM Allocation</span>
+                <span className="font-mono text-neutral-800 dark:text-neutral-200 font-semibold">
+                  {trainingStatus === 'training' ? `${vramUsage} GB / 16.0 GB` : '0.0 GB / 16.0 GB'}
+                </span>
+              </div>
+
+              {/* Temp stats */}
+              <div className="flex justify-between items-center pt-1.5 border-t border-neutral-100 dark:border-neutral-900">
+                <span className="text-neutral-500 text-[10px]">Accelerator Temp</span>
+                <span className={`font-mono font-semibold ${gpuTemp > 65 ? 'text-red-500' : 'text-neutral-800 dark:text-neutral-200'}`}>
+                  {gpuTemp}°C
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right 2 columns: Interactive Tabbed Panel (Telemetry / Notebook logs / Python Script) */}
+        <div className="lg:col-span-2 space-y-4">
+          
+          {/* Tabs header */}
+          <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-2">
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setActiveTab('graph')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'graph' 
+                    ? 'bg-royalblue-500/10 text-royalblue-500' 
+                    : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                }`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                Live Graphs
+              </button>
+              <button 
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'logs' 
+                    ? 'bg-royalblue-500/10 text-royalblue-500' 
+                    : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                }`}
+              >
+                <Terminal className="w-3.5 h-3.5" />
+                Notebook Logs
+              </button>
+              <button 
+                onClick={() => setActiveTab('script')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'script' 
+                    ? 'bg-royalblue-500/10 text-royalblue-500' 
+                    : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                }`}
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                Export Script
+              </button>
+            </div>
+            
+            {activeTab === 'graph' && metricsHistory.length > 0 && (
+              <div className="flex items-center gap-1 p-0.5 bg-neutral-100 dark:bg-neutral-950 rounded-lg">
+                {CHART_TYPES.map(ct => (
+                  <button
+                    key={ct.id}
+                    onClick={() => setChartType(ct.id)}
+                    title={ct.label}
+                    className={`p-1 rounded text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 transition-all ${
+                      chartType === ct.id ? 'bg-white dark:bg-neutral-900 text-royalblue-500 shadow-sm' : ''
+                    }`}
+                  >
+                    {ct.icon}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* TAB CONTENT: Live Graphs */}
+          {activeTab === 'graph' && (
+            <div className="bg-white dark:bg-neutral-950 rounded-2xl shadow-sm overflow-hidden border border-neutral-100 dark:border-neutral-900">
+              
+              {/* Legends */}
+              <div className="flex items-center gap-4 px-6 pt-5 pb-3 border-b border-neutral-50 dark:border-neutral-900">
+                <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">Metrics Trace</span>
+                <div className="flex items-center gap-3 text-[10px] font-mono text-neutral-400">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-0.5 bg-royalblue-500 rounded-full inline-block" />
+                    Accuracy
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-3 h-0.5 bg-red-400 rounded-full inline-block" />
+                    Loss
+                  </span>
+                  {metricsHistory.some(m => m.valLoss) && (
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-0.5 bg-orange-400 rounded-full inline-block" />
+                      Val Loss
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Chart SVG wrapper */}
+              <div className="relative bg-neutral-950 px-2 pb-2 mx-4 mt-4 rounded-xl overflow-hidden">
+                <svg width="0" height="0" className="absolute">
+                  <defs>
+                    <linearGradient id="grad-acc" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#4169e1" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="#4169e1" stopOpacity="0.01" />
+                    </linearGradient>
+                    <linearGradient id="grad-loss" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f87171" stopOpacity="0.2" />
+                      <stop offset="100%" stopColor="#f87171" stopOpacity="0.01" />
+                    </linearGradient>
+                    <filter id="glow-blue">
+                      <feGaussianBlur stdDeviation="2.5" result="blur" />
+                      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
+                  </defs>
+                </svg>
+
+                {metricsHistory.length > 0 ? (
+                  <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" style={{ minHeight: 180 }}>
+                    {yLabels.map((v, i) => {
+                      const y = PT + (1 - v) * plotH;
+                      return (
+                        <g key={i}>
+                          <line
+                            x1={PL} y1={y} x2={W - PR} y2={y}
+                            stroke="#ffffff10" strokeWidth="1"
+                            strokeDasharray={v === 0 || v === 1 ? '0' : '4 4'}
+                          />
+                          <text x={PL - 6} y={y + 3.5} textAnchor="end" fontSize="9" fill="#555" fontFamily="monospace">
+                            {v.toFixed(2)}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {/* BAR CHART */}
+                    {chartType === 'bar' && metricsHistory.map((m, i) => {
+                      const barW = Math.max(2, (plotW / n) * 0.4);
+                      const accH = (m.accuracy || 0) * plotH;
+                      const lossH = (m.loss / maxLoss) * plotH;
+                      const x = PL + i * stepX;
+                      return (
+                        <g key={i}>
+                          <rect x={x - barW - 1} y={H - PB - accH} width={barW} height={accH} fill="#4169e1" opacity="0.85" rx="1.5" />
+                          <rect x={x + 1} y={H - PB - lossH} width={barW} height={lossH} fill="#f87171" opacity="0.75" rx="1.5" />
+                        </g>
+                      );
+                    })}
+
+                    {/* SCATTER CHART */}
+                    {chartType === 'scatter' && metricsHistory.map((m, i) => {
+                      const { x: ax, y: ay } = getXY(i, 'accuracy');
+                      const { x: lx, y: ly } = getXY(i, 'loss');
+                      return (
+                        <g key={i}>
+                          <circle cx={ax} cy={ay} r="4.5" fill="#4169e1" opacity="0.85" filter="url(#glow-blue)" />
+                          <circle cx={lx} cy={ly} r="3.5" fill="#f87171" opacity="0.8" />
+                        </g>
+                      );
+                    })}
+
+                    {/* AREA CHART */}
+                    {chartType === 'area' && (
+                      <>
+                        <path d={areaPath('loss')} fill="url(#grad-loss)" />
+                        <path d={areaPath('accuracy')} fill="url(#grad-acc)" />
+                        <polyline points={polyPoints('loss')} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
+                        <polyline points={polyPoints('accuracy')} fill="none" stroke="#4169e1" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" filter="url(#glow-blue)" />
+                      </>
+                    )}
+
+                    {/* LINE CHART */}
+                    {chartType === 'line' && (
+                      <>
+                        <polyline points={polyPoints('loss')} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
+                        <polyline points={polyPoints('accuracy')} fill="none" stroke="#4169e1" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" filter="url(#glow-blue)" />
+                      </>
+                    )}
+
+                    {/* SMOOTH CHART */}
+                    {chartType === 'smooth' && (
+                      <>
+                        <path d={areaPath('loss', true)} fill="url(#grad-loss)" />
+                        <path d={areaPath('accuracy', true)} fill="url(#grad-acc)" />
+                        <path d={smoothPath('loss')} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+                        <path d={smoothPath('accuracy')} fill="none" stroke="#4169e1" strokeWidth="2.5" strokeLinecap="round" filter="url(#glow-blue)" />
+                      </>
+                    )}
+
+                    {/* Interactive dots */}
+                    {(chartType === 'line' || chartType === 'area' || chartType === 'smooth') && metricsHistory.map((m, i) => {
+                      const { x: ax, y: ay } = getXY(i, 'accuracy');
+                      return (
+                        <g key={i} className="group/dot">
+                          <circle cx={ax} cy={ay} r="3" fill="#4169e1" stroke="#0a0a0f" strokeWidth="1.5" className="cursor-pointer" />
+                          <rect x={ax - 22} y={ay - 22} width="44" height="14" rx="3" fill="#1e1e2e" opacity="0" className="group-hover/dot:opacity-100 transition-opacity" />
+                          <text x={ax} y={ay - 12} textAnchor="middle" fontSize="8.5" fill="#818cf8" fontFamily="monospace" fontWeight="bold" className="opacity-0 group-hover/dot:opacity-100 transition-opacity">
+                            {(m.accuracy || 0).toFixed(3)}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {/* Val Loss line */}
+                    {chartType !== 'bar' && metricsHistory.some(m => m.valLoss) && (
+                      <polyline
+                        points={metricsHistory.map((m, i) => {
+                          const vl = (m.valLoss || 0) / maxLoss;
+                          const x = PL + i * stepX;
+                          const y = H - PB - vl * plotH;
+                          return `${x},${y}`;
+                        }).join(' ')}
+                        fill="none"
+                        stroke="#fb923c"
+                        strokeWidth="1.2"
+                        strokeDasharray="4 3"
+                        opacity="0.6"
+                      />
+                    )}
+                  </svg>
+                ) : (
+                  <div className="h-48 flex flex-col items-center justify-center gap-2">
+                    <TrendingUp className="w-8 h-8 text-neutral-700" />
+                    <p className="text-xs text-neutral-600 font-medium">Start training to render live telemetry</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Epoch metrics stats list */}
+              {metricsHistory.length > 0 && (
+                <div className="px-4 pb-4">
+                  <div className="overflow-auto max-h-[160px] rounded-xl border border-neutral-100 dark:border-neutral-900 bg-neutral-50 dark:bg-neutral-900">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="sticky top-0 bg-neutral-50 dark:bg-neutral-900 z-10 border-b border-neutral-100 dark:border-neutral-900">
+                        <tr className="text-neutral-400 dark:text-neutral-505 uppercase tracking-wider font-semibold text-[9px] font-mono">
+                          <th className="py-2.5 pl-4">Epoch</th>
+                          <th className="py-2.5 text-right text-red-500">Loss</th>
+                          <th className="py-2.5 text-right text-orange-500 pr-4">Val Loss</th>
+                          <th className="py-2.5 text-right pr-4 text-royalblue-500">Accuracy</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-100 dark:divide-neutral-900 font-mono">
+                        {metricsHistory.map((m, idx) => (
+                          <tr key={idx} className="hover:bg-neutral-100 dark:hover:bg-neutral-850/60 transition-colors">
+                            <td className="py-2 pl-4 font-sans text-neutral-500 dark:text-neutral-400 text-[11px]">Ep {m.epoch}</td>
+                            <td className="py-2 text-right text-red-500 dark:text-red-400 text-[11px]">{(m.loss || 0).toFixed(4)}</td>
+                            <td className="py-2 text-right text-orange-500 dark:text-orange-400 pr-4 text-[11px]">{(m.valLoss || 0).toFixed(4)}</td>
+                            <td className="py-2 text-right pr-4 text-royalblue-500 font-bold text-[11px]">{(m.accuracy || 0).toFixed(4)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB CONTENT: Notebook logs console */}
+          {activeTab === 'logs' && (
+            <div className="bg-neutral-950 text-neutral-300 font-mono text-[11px] rounded-2xl p-4 min-h-[300px] max-h-[400px] overflow-y-auto text-left border border-neutral-900 space-y-1 relative shadow-inner">
+              <div className="sticky top-0 bg-neutral-950/95 backdrop-blur-md pb-2 border-b border-neutral-900 mb-2 flex justify-between items-center text-[10px] text-neutral-500">
+                <span>trace_executor_logs.stdout</span>
+                <span className="flex items-center gap-1 bg-neutral-900 px-2 py-0.5 rounded text-neutral-400">
+                  <Terminal className="w-3 h-3" /> Live Console
+                </span>
+              </div>
+              
+              <div className="space-y-0.5">
+                {logs.map((log, i) => (
+                  <div key={i} className={
+                    log.includes('[SUCCESS]') ? 'text-emerald-400' 
+                    : log.includes('[CHECKPOINT]') ? 'text-cyan-400'
+                    : log.includes('[RESUME]') ? 'text-yellow-400'
+                    : log.includes('[INFO]') ? 'text-neutral-500'
+                    : 'text-neutral-300'
+                  }>
+                    {log}
+                  </div>
+                ))}
+                {logs.length === 0 && (
+                  <div className="text-neutral-600 flex flex-col items-center justify-center py-20 gap-2">
+                    <Terminal className="w-6 h-6" />
+                    <span>Console idle. Start scaling to output stdout logging stream.</span>
+                  </div>
+                )}
+                {trainingStatus === 'training' && (
+                  <div className="flex items-center gap-1.5 text-royalblue-400 pt-1">
+                    <span className="w-1.5 h-1.5 bg-royalblue-500 rounded-full animate-ping" />
+                    <span>Executing epoch iterations...</span>
+                  </div>
+                )}
+                <div ref={consoleBottomRef} />
+              </div>
+            </div>
+          )}
+
+          {/* TAB CONTENT: Export Python PyTorch Script */}
+          {activeTab === 'script' && (
+            <div className="bg-neutral-950 rounded-2xl border border-neutral-900 overflow-hidden text-left relative">
+              <div className="bg-neutral-900/50 px-4 py-2.5 border-b border-neutral-900 flex justify-between items-center">
+                <span className="font-mono text-[10px] text-neutral-400">pytorch_training_pipeline.py</span>
+                <button 
+                  onClick={copyScript}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-white rounded text-[10px] font-semibold transition-all"
+                >
+                  {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  {copied ? 'Copied!' : 'Copy Script'}
+                </button>
+              </div>
+              <pre className="p-4 font-mono text-[10.5px] text-neutral-300 overflow-auto max-h-[320px] leading-relaxed">
+                <code>{generatePyTorchScript()}</code>
+              </pre>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Model Checkpoints Section */}
+      <div className="space-y-4 text-left pt-2 border-t border-neutral-200 dark:border-neutral-800">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-500">Model Checkpoints</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[350px] overflow-y-auto pr-1">
+          {checkpoints.map((cp) => (
+            <div
+              key={cp.epoch}
+              className={`p-4 rounded-xl flex items-center justify-between transition-all border ${
+                resumeFromCheckpoint && lastCheckpoint && cp.epoch === lastCheckpoint.epoch
+                  ? 'bg-royalblue-500/10 border-royalblue-500/30'
+                  : 'bg-white dark:bg-neutral-950 hover:bg-neutral-50 dark:hover:bg-neutral-900 border-neutral-100 dark:border-neutral-850'
+              }`}
+            >
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">Epoch {cp.epoch}</p>
+                  {resumeFromCheckpoint && lastCheckpoint && cp.epoch === lastCheckpoint.epoch && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-royalblue-500 text-white font-bold font-mono scale-90">ACTIVE</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-neutral-500 dark:text-neutral-400">{cp.timestamp} · {(cp.fileSize / 1024).toFixed(0)} KB</p>
+              </div>
+              <button className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg text-royalblue-500 hover:text-neutral-900 dark:hover:text-white transition-colors">
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {checkpoints.length === 0 && (
+            <div className="col-span-full p-8 bg-white dark:bg-neutral-950 rounded-2xl text-center text-xs text-neutral-400 border border-dashed border-neutral-200 dark:border-neutral-800">
+              No checkpoints serialized yet. Run execution to output model weights checkpoints.
+            </div>
+          )}
+        </div>
+      </div>
+
+    </div>
+  );
+};
