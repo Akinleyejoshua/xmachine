@@ -65,15 +65,43 @@ export const Sandbox: React.FC = () => {
     return etl.classNames && etl.classNames.length > 0 ? etl.classNames : ['Cat', 'Dog', 'Bird'];
   }, [etl.classNames, currentProject.domain]);
 
-  const handlePredict = () => {
+  const handlePredict = async () => {
     setInferenceActive(true);
 
-    setTimeout(() => {
+    try {
       const inputVal = activeConfig?.sandbox.inputType === 'image' ? imagePreview : textVal;
-      const result = activeConfig?.sandbox.defaultMockResult(inputVal || '', classNames);
-      setInferenceResult(result);
+      if (!inputVal) {
+        setInferenceActive(false);
+        return;
+      }
+
+      // Call the inference API
+      const response = await fetch('/api/inference', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: inputVal,
+          projectId: currentProject._id,
+          domain: currentProject.domain,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setInferenceResult(data.data);
+      } else {
+        console.error('Inference failed:', data.error);
+        setInferenceResult(`Error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Inference error:', error);
+      setInferenceResult('Error: Failed to generate response.');
+    } finally {
       setInferenceActive(false);
-    }, 600);
+    }
   };
 
   const handleBulkEvaluate = () => {
