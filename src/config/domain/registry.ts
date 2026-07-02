@@ -449,7 +449,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       outputTitle: 'Causal Autoregressive Output',
       defaultMockResult: (input, classNames) => {
         return {
-          text: `## Completed Response for "${input}"\n\nGenerated using fine-tuned weights:\n\`\`\`rust\nfn quicksort<T: Ord>(mut vec: Vec<T>) -> Vec<T> {\n    if vec.len() <= 1 { return vec; }\n    let pivot = vec.remove(0);\n    let (smaller, larger): (Vec<T>, Vec<T>) = vec.into_iter().partition(|x| x <= &pivot);\n    let mut sorted = quicksort(smaller);\n    sorted.push(pivot);\n    sorted.extend(quicksort(larger));\n    sorted\n}\n\`\`\`\n\n*Sequence evaluation latency: 280ms · Generation Speed: 125.4 tokens/s · Total tokens: 112*`,
+        text: `This is a mock response for: "${input}". Replace this with an actual LLM API call.`,
           perplexity: 4.85,
           latencyMs: 280,
           tokens: 112
