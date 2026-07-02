@@ -18,7 +18,7 @@ const ProjectSchema: Schema = new Schema(
     domain: { 
       type: String, 
       required: true, 
-      enum: ['cv-classification', 'object-detection', 'nlp', 'gans', 'llm-finetuning'] 
+      enum: ['cv-classification', 'object-detection', 'nlp', 'gans', 'llm-finetuning', 'time-series-forecasting'] 
     },
     etl: {
       files: [{

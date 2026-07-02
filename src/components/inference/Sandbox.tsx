@@ -346,6 +346,55 @@ export const Sandbox: React.FC = () => {
                 </button>
               </div>
             )}
+
+            {activeConfig?.sandbox.inputType === 'time-series' && (
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-neutral-950 rounded-xl p-4 border border-neutral-100 dark:border-neutral-900 shadow-sm space-y-3">
+                  <label className="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider block">
+                    Upload Lookback Dataset File
+                  </label>
+                  <div className="border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl p-4 text-center cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors">
+                    <input
+                      type="file"
+                      accept=".csv,.txt"
+                      onChange={(e) => {
+                        if (e.target.files?.[0]) {
+                          setTextVal(`[Loaded: ${e.target.files[0].name}] 102.4, 103.5, 101.9, 102.8, 104.2, 105.1, 103.9, 104.8, 106.2, 107.5`);
+                        }
+                      }}
+                      className="hidden"
+                      id="ts-file-upload"
+                    />
+                    <label htmlFor="ts-file-upload" className="cursor-pointer space-y-1.5 block">
+                      <Upload className="w-5 h-5 text-neutral-400 mx-auto" />
+                      <p className="text-[10px] text-neutral-700 dark:text-neutral-300 font-semibold">Select Sequence CSV/TXT</p>
+                    </label>
+                  </div>
+                  
+                  <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
+                  
+                  <label className="text-[10px] font-bold text-neutral-400 dark:text-neutral-505 uppercase tracking-wider block">
+                    Or Enter Raw Time-Series Values
+                  </label>
+                  <textarea
+                    placeholder="e.g. 10.2, 11.5, 12.1, 10.8, 11.2, 12.5..."
+                    value={textVal}
+                    onChange={(e) => setTextVal(e.target.value)}
+                    disabled={inferenceActive}
+                    className="w-full h-24 bg-neutral-50 dark:bg-neutral-900 rounded-lg p-3 text-[10px] text-neutral-850 dark:text-neutral-250 placeholder-neutral-400 border border-neutral-100 dark:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-royalblue-500 resize-none shadow-inner"
+                  />
+                </div>
+
+                <button
+                  onClick={handlePredict}
+                  disabled={!textVal.trim() || inferenceActive}
+                  className="w-full py-2.5 bg-royalblue-600 hover:bg-royalblue-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-colors shadow-sm"
+                >
+                  {inferenceActive ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <TrendingUp className="w-3.5 h-3.5" />}
+                  <span>{activeConfig.sandbox.primaryBtnText}</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Output Panel */}
@@ -430,6 +479,102 @@ export const Sandbox: React.FC = () => {
                       <div className="flex justify-between items-center py-1">
                         <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">FID Score</span>
                         <span className="text-xs font-bold text-green-500 font-mono">{inferenceResult.fidScore}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeConfig?.sandbox.outputType === 'time-series' && inferenceResult.lookback && (
+                    <div className="space-y-4 text-left">
+                      <div className="relative bg-neutral-950 p-2 rounded-xl border border-neutral-900 overflow-hidden">
+                        {(() => {
+                          const lb = inferenceResult.lookback as number[];
+                          const fc = inferenceResult.forecast as number[];
+                          const cl = inferenceResult.confidenceLower as number[];
+                          const cu = inferenceResult.confidenceUpper as number[];
+                          
+                          const allVals = [...lb, ...fc, ...cl, ...cu];
+                          const minVal = Math.min(...allVals);
+                          const maxVal = Math.max(...allVals);
+                          const valRange = maxVal - minVal > 0 ? maxVal - minVal : 1.0;
+                          
+                          const W = 320;
+                          const H = 160;
+                          const PL = 25;
+                          const PR = 10;
+                          const PT = 15;
+                          const PB = 15;
+                          const plotW = W - PL - PR;
+                          const plotH = H - PT - PB;
+                          
+                          const totalPoints = lb.length + fc.length;
+                          const stepX = totalPoints > 1 ? plotW / (totalPoints - 1) : plotW;
+
+                          const getPoint = (val: number, idx: number) => {
+                            const x = PL + idx * stepX;
+                            const y = H - PB - ((val - minVal) / valRange) * plotH;
+                            return { x, y };
+                          };
+
+                          const lbPath = lb.map((v, i) => {
+                            const { x, y } = getPoint(v, i);
+                            return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
+                          }).join(' ');
+
+                          const transIdx = lb.length - 1;
+                          const transPt = getPoint(lb[transIdx], transIdx);
+
+                          const fcPath = `M ${transPt.x},${transPt.y} ` + fc.map((v, i) => {
+                            const { x, y } = getPoint(v, lb.length + i);
+                            return `L ${x},${y}`;
+                          }).join(' ');
+
+                          const cuPts = cu.map((v, i) => {
+                            const { x, y } = getPoint(v, lb.length + i);
+                            return `${x},${y}`;
+                          });
+                          const clPts = cl.slice().reverse().map((v, i) => {
+                            const realIdx = cl.length - 1 - i;
+                            const { x, y } = getPoint(v, lb.length + realIdx);
+                            return `${x},${y}`;
+                          });
+                          const shadedPath = `M ${transPt.x},${transPt.y} L ${cuPts.join(' L ')} L ${clPts.join(' L ')} Z`;
+
+                          return (
+                            <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
+                              {[0, 0.5, 1.0].map((tick) => {
+                                const y = PT + (1 - tick) * plotH;
+                                return (
+                                  <line
+                                    key={tick}
+                                    x1={PL} y1={y} x2={W - PR} y2={y}
+                                    stroke="#ffffff10" strokeWidth="0.5"
+                                    strokeDasharray="2 2"
+                                  />
+                                );
+                              })}
+
+                              <line
+                                x1={transPt.x} y1={PT} x2={transPt.x} y2={H - PB}
+                                stroke="#ffffff30" strokeWidth="1" strokeDasharray="3 3"
+                              />
+                              <text x={transPt.x - 3} y={PT + 10} textAnchor="end" fontSize="7" fill="#888" fontFamily="monospace">
+                                t (Present)
+                              </text>
+
+                              <path d={shadedPath} fill="#4169e1" fillOpacity="0.15" />
+                              <path d={lbPath} fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" />
+                              <path d={fcPath} fill="none" stroke="#4169e1" strokeWidth="2.0" strokeDasharray="3 3" strokeLinecap="round" />
+                              <circle cx={transPt.x} cy={transPt.y} r="2.5" fill="#4169e1" stroke="#ffffff" strokeWidth="0.75" />
+                            </svg>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
+                      
+                      <div className="grid grid-cols-2 gap-3 text-[10px] text-neutral-500 font-mono">
+                        <div>RMSE: <span className="text-royalblue-500 font-bold">{inferenceResult.rmse}</span></div>
+                        <div>MAE: <span className="text-green-500 font-bold">{inferenceResult.mae}</span></div>
                       </div>
                     </div>
                   )}

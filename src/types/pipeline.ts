@@ -3,7 +3,8 @@ export type ProjectDomain =
   | 'object-detection'
   | 'nlp'
   | 'gans'
-  | 'llm-finetuning';
+  | 'llm-finetuning'
+  | 'time-series-forecasting';
 
 export interface ProjectMeta {
   id: string;
@@ -46,9 +47,15 @@ export type ImageTransformActionType =
   | 'augment-brightness'
   | 'augment-zoom';
 
+export type TimeSeriesTransformActionType =
+  | 'temporal-alignment'
+  | 'sequence-windowing'
+  | 'stationarity-transforms'
+  | 'sequence-imputation';
+
 export interface TransformAction {
   id: string;
-  type: TextTransformActionType | ImageTransformActionType;
+  type: TextTransformActionType | ImageTransformActionType | TimeSeriesTransformActionType;
   params: Record<string, any>;
   enabled: boolean;
 }
@@ -84,7 +91,10 @@ export type LayerType =
   | 'bidirectional'
   | 'gru'
   | 'dropout'
-  | 'batchNorm';
+  | 'batchNorm'
+  | 'conv1d'
+  | 'attention'
+  | 'arima';
 
 export interface ModelLayer {
   id: string;
@@ -97,7 +107,9 @@ export type LossFunctionType =
   | 'categoricalCrossentropy'
   | 'meanSquaredError'
   | 'binaryCrossentropy'
-  | 'sparseCategoricalCrossentropy';
+  | 'sparseCategoricalCrossentropy'
+  | 'meanAbsoluteError'
+  | 'quantileLoss';
 
 export interface Hyperparameters {
   optimizer: OptimizerType;

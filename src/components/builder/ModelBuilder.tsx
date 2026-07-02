@@ -261,6 +261,9 @@ export const ModelBuilder: React.FC = () => {
                         {layer.type === 'batchNorm' && `mom=${layer.config.momentum}`}
                         {layer.type === 'flatten' && 'flattens spatial dims'}
                         {layer.type === 'bidirectional' && `units=${layer.config.units}`}
+                        {layer.type === 'conv1d' && `filters=${layer.config.filters || 64} · k=${layer.config.kernelSize || 3} · dil=${layer.config.dilationRate || 1}`}
+                        {layer.type === 'attention' && `heads=${layer.config.numHeads || 4} · keyDim=${layer.config.keyDim || 16}`}
+                        {layer.type === 'arima' && `p=${layer.config.p || 1} · d=${layer.config.d || 1} · q=${layer.config.q || 1}`}
                       </span>
                     </div>
 
@@ -377,6 +380,38 @@ export const ModelBuilder: React.FC = () => {
                             onChange={v => updateLayerConfig(layer.id, { momentum: v })} />
                           <FieldInput label="Epsilon" value={layer.config.epsilon || 0.001} step={0.0001} min={0}
                             onChange={v => updateLayerConfig(layer.id, { epsilon: v })} />
+                        </>)}
+
+                        {/* Conv1D */}
+                        {layer.type === 'conv1d' && (<>
+                          <FieldInput label="Filters" value={layer.config.filters || 64} min={1}
+                            onChange={v => updateLayerConfig(layer.id, { filters: v })} />
+                          <FieldInput label="Kernel Size" value={layer.config.kernelSize || 3} min={1}
+                            onChange={v => updateLayerConfig(layer.id, { kernelSize: v })} />
+                          <FieldInput label="Dilation Rate" value={layer.config.dilationRate || 1} min={1}
+                            onChange={v => updateLayerConfig(layer.id, { dilationRate: v })} />
+                          <FieldSelect label="Activation" value={layer.config.activation || 'relu'} options={ACTIVATION_OPTIONS}
+                            onChange={v => updateLayerConfig(layer.id, { activation: v })} />
+                        </>)}
+
+                        {/* Attention */}
+                        {layer.type === 'attention' && (<>
+                          <FieldInput label="Heads" value={layer.config.numHeads || 4} min={1}
+                            onChange={v => updateLayerConfig(layer.id, { numHeads: v })} />
+                          <FieldInput label="Key Dim" value={layer.config.keyDim || 16} min={1}
+                            onChange={v => updateLayerConfig(layer.id, { keyDim: v })} />
+                          <FieldInput label="Dropout" value={layer.config.dropout || 0.1} step={0.05} min={0} max={0.9}
+                            onChange={v => updateLayerConfig(layer.id, { dropout: v })} />
+                        </>)}
+
+                        {/* ARIMA */}
+                        {layer.type === 'arima' && (<>
+                          <FieldInput label="AR Order (p)" value={layer.config.p || 1} min={0}
+                            onChange={v => updateLayerConfig(layer.id, { p: v })} />
+                          <FieldInput label="Diff Order (d)" value={layer.config.d || 1} min={0}
+                            onChange={v => updateLayerConfig(layer.id, { d: v })} />
+                          <FieldInput label="MA Order (q)" value={layer.config.q || 1} min={0}
+                            onChange={v => updateLayerConfig(layer.id, { q: v })} />
                         </>)}
                       </div>
                     </div>

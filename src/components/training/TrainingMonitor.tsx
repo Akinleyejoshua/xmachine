@@ -663,6 +663,60 @@ print("PyTorch model ready for scaling!")
               </div>
             </div>
           </div>
+
+          {/* Time-Series Validation split visualizer */}
+          {currentProject.domain === 'time-series-forecasting' && (
+            <div className="bg-white dark:bg-neutral-950 rounded-xl p-5 shadow-sm space-y-3 border border-neutral-100 dark:border-neutral-900 text-left animate-fadeIn">
+              <h4 className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+                <Activity className="w-4 h-4 text-royalblue-500" />
+                <span>Walk-Forward Split Strategy</span>
+              </h4>
+              <p className="text-[10px] text-neutral-400 leading-relaxed">
+                Time-Series Walk-Forward splits prevent lookahead bias. Data is trained sequentially over rolling horizons.
+              </p>
+              
+              <div className="space-y-2 pt-1 font-mono text-[9px]">
+                {/* Fold 1 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-neutral-500">
+                    <span>Fold 1</span>
+                    <span className="text-royalblue-500 font-bold">t-30 to t+7</span>
+                  </div>
+                  <div className="flex h-3.5 rounded overflow-hidden text-center text-white font-bold text-[8px]">
+                    <div className="bg-neutral-800 dark:bg-neutral-900 w-[60%] flex items-center justify-center border-r border-neutral-700">Train (60%)</div>
+                    <div className="bg-royalblue-600 w-[20%] flex items-center justify-center border-r border-royalblue-500">Val (20%)</div>
+                    <div className="bg-neutral-400 dark:bg-neutral-600 w-[20%] flex items-center justify-center text-neutral-800 dark:text-neutral-300">Test (20%)</div>
+                  </div>
+                </div>
+
+                {/* Fold 2 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-neutral-500">
+                    <span>Fold 2</span>
+                    <span className="text-royalblue-500 font-bold">t-15 to t+7</span>
+                  </div>
+                  <div className="flex h-3.5 rounded overflow-hidden text-center text-white font-bold text-[8px]">
+                    <div className="bg-neutral-800 dark:bg-neutral-900 w-[70%] flex items-center justify-center border-r border-neutral-700">Train (70%)</div>
+                    <div className="bg-royalblue-600 w-[15%] flex items-center justify-center border-r border-royalblue-500">Val (15%)</div>
+                    <div className="bg-neutral-400 dark:bg-neutral-600 w-[15%] flex items-center justify-center text-neutral-800 dark:text-neutral-300">Test (15%)</div>
+                  </div>
+                </div>
+
+                {/* Fold 3 */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-neutral-500">
+                    <span>Fold 3</span>
+                    <span className="text-royalblue-500 font-bold">t to t+7</span>
+                  </div>
+                  <div className="flex h-3.5 rounded overflow-hidden text-center text-white font-bold text-[8px]">
+                    <div className="bg-neutral-800 dark:bg-neutral-900 w-[80%] flex items-center justify-center border-r border-neutral-700">Train (80%)</div>
+                    <div className="bg-royalblue-600 w-[10%] flex items-center justify-center border-r border-royalblue-500">Val (10%)</div>
+                    <div className="bg-neutral-400 dark:bg-neutral-600 w-[10%] flex items-center justify-center text-neutral-800 dark:text-neutral-300">Test (10%)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right 2 columns: Interactive Tabbed Panel (Telemetry / Notebook logs / Python Script) */}

@@ -26,7 +26,8 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       defaultActions: [
         { id: 'img-resize', type: 'resize', params: { width: 224, height: 224 }, enabled: true },
         { id: 'img-norm', type: 'pixel-normalize-0-1', params: {}, enabled: true }
-      ]
+      ],
+      defaultClassNames: ['Cat', 'Dog', 'Bird']
     },
     modelBuilder: {
       layerOptions: [
@@ -124,7 +125,8 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       defaultActions: [
         { id: 'det-resize', type: 'resize', params: { width: 416, height: 416 }, enabled: true },
         { id: 'det-norm', type: 'pixel-normalize-0-1', params: {}, enabled: true }
-      ]
+      ],
+      defaultClassNames: ['Car', 'Pedestrian', 'Signal']
     },
     modelBuilder: {
       layerOptions: [
@@ -224,7 +226,8 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       defaultActions: [
         { id: 'text-lower', type: 'lowercase', params: {}, enabled: true },
         { id: 'text-tokenize', type: 'tokenize', params: { vocabularySize: 5000, sequenceLength: 100 }, enabled: true }
-      ]
+      ],
+      defaultClassNames: ['Positive', 'Negative', 'Neutral']
     },
     modelBuilder: {
       layerOptions: [
@@ -317,7 +320,8 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       defaultActions: [
         { id: 'gan-resize', type: 'resize', params: { width: 64, height: 64 }, enabled: true },
         { id: 'gan-norm', type: 'pixel-normalize-1-1', params: {}, enabled: true }
-      ]
+      ],
+      defaultClassNames: ['Real Distribution', 'Synthesized']
     },
     modelBuilder: {
       layerOptions: [
@@ -397,7 +401,8 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       ],
       defaultActions: [
         { id: 'llm-tokenize', type: 'tokenize', params: { tokenizer: 'llama-style' }, enabled: true }
-      ]
+      ],
+      defaultClassNames: ['Target Instruction', 'Aligned Output']
     },
     modelBuilder: {
       layerOptions: [
@@ -452,6 +457,120 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         const confidence = 0.8 + Math.random() * 0.15;
         const latencyMs = Math.floor(180 + Math.random() * 120);
         return { name: fileName, trueClass: 'Target Instruction', predClass: 'Aligned Output', confidence, latencyMs, correct: true };
+      }
+    }
+  },
+  'time-series-forecasting': {
+    id: 'time-series-forecasting',
+    displayName: 'Time-Series Forecasting',
+    description: 'Predict sequence metrics over temporal horizons. Configured for seasonal decomposition, sequence windowing, and regression modeling.',
+    pipeline: {
+      allowedExtensions: ['.csv', '.json', '.txt'],
+      allowedFileTypes: ['csv', 'json', 'txt'],
+      ingestionFormats: [
+        { id: 'tabular', label: 'Tabular CSV / Text' },
+        { id: 'nested-json', label: 'Nested JSON Time-Series' }
+      ],
+      preprocessingOptions: [
+        { id: 'temporal-alignment', type: 'temporal-alignment', label: 'Temporal Alignment', category: 'Preprocessing', description: 'Define timestamps and target variables.', defaultParams: { timestampCol: 'timestamp', targetCol: 'target', frequency: 'Daily' } },
+        { id: 'sequence-windowing', type: 'sequence-windowing', label: 'Sequence Windowing', category: 'Preprocessing', description: 'Define history length and prediction size.', defaultParams: { lookbackWindow: 30, forecastHorizon: 7 } },
+        { id: 'stationarity-transforms', type: 'stationarity-transforms', label: 'Stationarity Transforms', category: 'Preprocessing', description: 'Apply differencing or log transforms.', defaultParams: { differencing: 'none', logTransform: false, seasonalDecomp: false } },
+        { id: 'sequence-imputation', type: 'sequence-imputation', label: 'Sequence Imputation', category: 'Preprocessing', description: 'Impute missing values in sequential order.', defaultParams: { method: 'linear' } }
+      ],
+      defaultActions: [
+        { id: 'ts-alignment', type: 'temporal-alignment', params: { timestampCol: 'timestamp', targetCol: 'target', frequency: 'Daily' }, enabled: true },
+        { id: 'ts-windowing', type: 'sequence-windowing', params: { lookbackWindow: 30, forecastHorizon: 7 }, enabled: true },
+        { id: 'ts-impute', type: 'sequence-imputation', params: { method: 'linear' }, enabled: true }
+      ],
+      defaultClassNames: ['Value']
+    },
+    modelBuilder: {
+      layerOptions: [
+        { id: 'lstm', label: 'LSTM — Long Short-Term Memory', description: 'Recurrent sequence network layer.', category: 'Sequence / Embedding', defaultParams: { units: 64, recurrentDropout: 0.1, returnSequences: true } },
+        { id: 'gru', label: 'GRU — Gated Recurrent Unit', description: 'Simplified recurrent sequence layer.', category: 'Sequence / Embedding', defaultParams: { units: 64, recurrentDropout: 0.1, returnSequences: true } },
+        { id: 'conv1d', label: 'Conv1D / TCN Layer', description: 'Temporal Convolutional filter layer.', category: 'Convolutional', defaultParams: { filters: 64, kernelSize: 3, dilationRate: 1, activation: 'relu' } },
+        { id: 'attention', label: 'Self-Attention Head', description: 'Multi-Head Attention block for forecasting.', category: 'Adapters / Attention', defaultParams: { numHeads: 4, keyDim: 16, dropout: 0.1 } },
+        { id: 'dense', label: 'Dense projection head', description: 'Predicts target regression values.', category: 'Fully Connected', defaultParams: { units: 1, activation: 'linear' } }
+      ],
+      lossFunctions: [
+        { id: 'meanSquaredError', label: 'Mean Squared Error (MSE)', description: 'Best for standard regression fitting.' },
+        { id: 'meanAbsoluteError', label: 'Mean Absolute Error (MAE)', description: 'Robust loss for reducing outliers impact.' },
+        { id: 'quantileLoss', label: 'Quantile Loss', description: 'Supports probabilistic and interval predictions.' }
+      ],
+      defaultLayers: [
+        { id: 'lstm-seq', type: 'lstm', config: { units: 64, recurrentDropout: 0.1, returnSequences: false } },
+        { id: 'dense-projection', type: 'dense', config: { units: 1, activation: 'linear' } }
+      ],
+      defaultHyperparameters: {
+        optimizer: 'adam',
+        loss: 'meanSquaredError',
+        learningRate: 0.001,
+        batchSize: 32,
+        epochs: 15
+      }
+    },
+    training: {
+      metrics: [
+        { id: 'loss', label: 'Train Loss', color: 'text-neutral-500', isMain: false },
+        { id: 'rmse', label: 'RMSE', color: 'text-royalblue-500', isMain: true },
+        { id: 'mae', label: 'MAE', color: 'text-green-500', isMain: true },
+        { id: 'mape', label: 'MAPE (%)', color: 'text-orange-500', isMain: false },
+        { id: 'dir_acc', label: 'Directional Accuracy', color: 'text-rose-500', isMain: false }
+      ],
+      generateMockMetrics: (epoch, maxEpochs, initialLr) => {
+        const factor = 1 / (1 + epoch * 0.18);
+        const loss = parseFloat((0.9 * factor + Math.random() * 0.04).toFixed(4));
+        const rmse = parseFloat((1.5 * factor + 0.1 + Math.random() * 0.05).toFixed(4));
+        const mae = parseFloat((1.1 * factor + 0.08 + Math.random() * 0.04).toFixed(4));
+        const mape = parseFloat((15.0 * factor + 2.0 + Math.random() * 0.8).toFixed(2));
+        const dir_acc = parseFloat((0.55 + (0.3 * (1 - factor)) + Math.random() * 0.02).toFixed(4));
+        return { loss, rmse, mae, mape, dir_acc };
+      }
+    },
+    sandbox: {
+      inputType: 'time-series',
+      outputType: 'time-series',
+      inputTitle: 'Time-Series Sequence Sandbox',
+      inputPlaceholder: 'Enter numeric sequence or drop a CSV file of values...',
+      primaryBtnText: 'Generate Forecast Horizon',
+      outputTitle: 'Continuous Forecast Chart',
+      defaultMockResult: (input, classNames) => {
+        const lookbackPoints = 30;
+        const forecastPoints = 10;
+        const lookback = [];
+        const forecast = [];
+        const confidenceLower = [];
+        const confidenceUpper = [];
+        
+        let val = 100 + Math.random() * 20;
+        for (let i = 0; i < lookbackPoints; i++) {
+          val = val + (Math.random() - 0.45) * 5;
+          lookback.push(parseFloat(val.toFixed(2)));
+        }
+        
+        let lastVal = lookback[lookback.length - 1];
+        for (let i = 0; i < forecastPoints; i++) {
+          lastVal = lastVal + 2 + (Math.random() - 0.5) * 4;
+          forecast.push(parseFloat(lastVal.toFixed(2)));
+          const uncertainty = (i + 1) * 1.5;
+          confidenceLower.push(parseFloat((lastVal - uncertainty).toFixed(2)));
+          confidenceUpper.push(parseFloat((lastVal + uncertainty).toFixed(2)));
+        }
+        
+        return {
+          lookback,
+          forecast,
+          confidenceLower,
+          confidenceUpper,
+          latencyMs: 18,
+          rmse: 1.24,
+          mae: 0.96
+        };
+      },
+      bulkMockResult: (fileName, classNames) => {
+        const confidence = 0.8 + Math.random() * 0.15;
+        const latencyMs = Math.floor(10 + Math.random() * 8);
+        return { name: fileName, trueClass: 'Actual sequence', predClass: 'Actual sequence', confidence, latencyMs, correct: true };
       }
     }
   }

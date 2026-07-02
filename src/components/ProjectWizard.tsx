@@ -14,7 +14,8 @@ import {
   Upload,
   FolderOpen,
   RefreshCw,
-  Plus
+  Plus,
+  TrendingUp
 } from 'lucide-react';
 
 interface DomainOption {
@@ -66,6 +67,14 @@ const DOMAINS: DomainOption[] = [
     icon: <Cpu className="w-6 h-6 text-royalblue-500" />,
     colorClass: 'hover:bg-neutral-100 dark:hover:bg-neutral-900 bg-white dark:bg-black text-neutral-800 dark:text-neutral-200',
     badge: 'LLM',
+  },
+  {
+    id: 'time-series-forecasting',
+    title: 'Time-Series Forecasting',
+    description: 'Predict sequence metrics over temporal horizons. Configured for seasonal decomposition, sequence windowing, and regression modeling.',
+    icon: <TrendingUp className="w-6 h-6 text-royalblue-500" />,
+    colorClass: 'hover:bg-neutral-100 dark:hover:bg-neutral-900 bg-white dark:bg-black text-neutral-800 dark:text-neutral-200',
+    badge: 'Forecasting',
   },
 ];
 

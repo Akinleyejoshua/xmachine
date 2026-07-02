@@ -501,6 +501,88 @@ export const ETLCanvas: React.FC = () => {
                         <option value="drop">Drop rows</option>
                       </select>
                     )}
+                    {action.type === 'temporal-alignment' && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-neutral-400">Timestamp</span>
+                          <input type="text" value={action.params.timestampCol || 'timestamp'}
+                            onChange={e => updateActionParams(action.id, { timestampCol: e.target.value })}
+                            className="w-16 bg-neutral-50 dark:bg-neutral-900 rounded px-1.5 py-0.5 text-[9px] text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-royalblue-500" />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-neutral-400">Target</span>
+                          <input type="text" value={action.params.targetCol || 'target'}
+                            onChange={e => updateActionParams(action.id, { targetCol: e.target.value })}
+                            className="w-16 bg-neutral-50 dark:bg-neutral-900 rounded px-1.5 py-0.5 text-[9px] text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-royalblue-500" />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-neutral-400">Freq</span>
+                          <select value={action.params.frequency || 'Daily'}
+                            onChange={e => updateActionParams(action.id, { frequency: e.target.value })}
+                            className="bg-neutral-50 dark:bg-neutral-900 rounded px-1 py-0.5 text-[9px] text-neutral-700 dark:text-neutral-300 focus:outline-none">
+                            <option value="Milliseconds">Milliseconds</option>
+                            <option value="Hourly">Hourly</option>
+                            <option value="Daily">Daily</option>
+                            <option value="Monthly">Monthly</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                    {action.type === 'sequence-windowing' && (
+                      <div className="flex flex-wrap items-center gap-3 pt-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-neutral-400">Lookback</span>
+                          <input type="number" value={action.params.lookbackWindow || 30}
+                            onChange={e => updateActionParams(action.id, { lookbackWindow: parseInt(e.target.value) || 1 })}
+                            className="w-12 bg-neutral-50 dark:bg-neutral-900 rounded px-1.5 py-0.5 text-[9px] text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-royalblue-500" />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-neutral-400">Horizon</span>
+                          <input type="number" value={action.params.forecastHorizon || 7}
+                            onChange={e => updateActionParams(action.id, { forecastHorizon: parseInt(e.target.value) || 1 })}
+                            className="w-12 bg-neutral-50 dark:bg-neutral-900 rounded px-1.5 py-0.5 text-[9px] text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-royalblue-500" />
+                        </div>
+                      </div>
+                    )}
+                    {action.type === 'stationarity-transforms' && (
+                      <div className="flex flex-wrap items-center gap-3 pt-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-neutral-400">Diff</span>
+                          <select value={action.params.differencing || 'none'}
+                            onChange={e => updateActionParams(action.id, { differencing: e.target.value })}
+                            className="bg-neutral-50 dark:bg-neutral-900 rounded px-1 py-0.5 text-[9px] text-neutral-700 dark:text-neutral-300 focus:outline-none">
+                            <option value="none">None</option>
+                            <option value="first">1st-Order</option>
+                            <option value="second">2nd-Order</option>
+                          </select>
+                        </div>
+                        <label className="flex items-center gap-1 text-[9px] text-neutral-400 cursor-pointer">
+                          <input type="checkbox" checked={!!action.params.logTransform}
+                            onChange={e => updateActionParams(action.id, { logTransform: e.target.checked })}
+                            className="rounded border-neutral-300 dark:border-neutral-750 text-royalblue-600 focus:ring-royalblue-500 h-3 w-3" />
+                          <span>Log Transform</span>
+                        </label>
+                        <label className="flex items-center gap-1 text-[9px] text-neutral-400 cursor-pointer">
+                          <input type="checkbox" checked={!!action.params.seasonalDecomp}
+                            onChange={e => updateActionParams(action.id, { seasonalDecomp: e.target.checked })}
+                            className="rounded border-neutral-300 dark:border-neutral-750 text-royalblue-600 focus:ring-royalblue-500 h-3 w-3" />
+                          <span>Seasonal Decomp</span>
+                        </label>
+                      </div>
+                    )}
+                    {action.type === 'sequence-imputation' && (
+                      <div className="flex items-center gap-1 pt-1">
+                        <span className="text-[9px] text-neutral-400">Method</span>
+                        <select value={action.params.method || 'linear'}
+                          onChange={e => updateActionParams(action.id, { method: e.target.value })}
+                          className="bg-neutral-50 dark:bg-neutral-900 rounded px-2 py-0.5 text-[10px] text-neutral-700 dark:text-neutral-300 focus:outline-none">
+                          <option value="ffill">Forward Fill</option>
+                          <option value="bfill">Backward Fill</option>
+                          <option value="linear">Linear Interpolation</option>
+                          <option value="spline">Spline Interpolation</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
 

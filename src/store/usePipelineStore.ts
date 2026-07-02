@@ -26,6 +26,7 @@ const getDomainDefaults = (domain: ProjectDomain) => {
     defaultHyperparameters: config
       ? { ...config.modelBuilder.defaultHyperparameters }
       : { ...DEFAULT_HYPERPARAMETERS },
+    defaultClassNames: config?.pipeline.defaultClassNames || ['Cat', 'Dog', 'Bird'],
   };
 };
 
@@ -60,7 +61,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
 
       // Actions
       initProject: async (name, domain) => {
-        const { defaultLayers, defaultActions, defaultHyperparameters } = getDomainDefaults(domain);
+        const { defaultLayers, defaultActions, defaultHyperparameters, defaultClassNames } = getDomainDefaults(domain);
         
         const payload = {
           name,
@@ -70,7 +71,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
             actions: defaultActions,
             batchSize: 32,
             shuffle: true,
-            classNames: ['Cat', 'Dog', 'Bird'],
+            classNames: defaultClassNames,
           },
           modelConfig: {
             layers: defaultLayers,
@@ -97,16 +98,16 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
                 updatedAt: result.data.updatedAt,
               },
               wizardOpen: false,
-          etl: result.data.etl || {
-            files: [],
-            actions: [],
-            batchSize: 32,
-            shuffle: true,
-            classNames: ['Cat', 'Dog', 'Bird'],
-            splitRatio: { train: 80, val: 20, test: 0 },
-            seed: 42,
-            stratified: true,
-          },
+              etl: result.data.etl || {
+                files: [],
+                actions: defaultActions,
+                batchSize: 32,
+                shuffle: true,
+                classNames: defaultClassNames,
+                splitRatio: { train: 80, val: 20, test: 0 },
+                seed: 42,
+                stratified: true,
+              },
               modelConfig: result.data.modelConfig,
               trainingStatus: 'idle',
               metricsHistory: [],
@@ -137,7 +138,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
             actions: defaultActions,
             batchSize: 32,
             shuffle: true,
-            classNames: ['Cat', 'Dog', 'Bird'],
+            classNames: defaultClassNames,
             splitRatio: { train: 80, val: 20, test: 0 },
             seed: 42,
             stratified: true,
@@ -157,6 +158,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
       },
 
       loadProject: (project) => {
+        const { defaultClassNames } = getDomainDefaults(project.domain);
         set({
           currentProject: {
             id: project._id,
@@ -166,7 +168,16 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
             updatedAt: project.updatedAt,
           },
           wizardOpen: false,
-          etl: project.etl,
+          etl: project.etl || {
+            files: [],
+            actions: [],
+            batchSize: 32,
+            shuffle: true,
+            classNames: defaultClassNames,
+            splitRatio: { train: 80, val: 20, test: 0 },
+            seed: 42,
+            stratified: true,
+          },
           modelConfig: project.modelConfig,
           trainingStatus: 'idle',
           metricsHistory: project.metricsHistory || [],

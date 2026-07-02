@@ -40,8 +40,8 @@ export interface MetricOption {
 }
 
 export interface SandboxBlueprint {
-  inputType: 'image' | 'text' | 'noise' | 'image-to-image';
-  outputType: 'classification' | 'object-detection' | 'text-generation' | 'image-generation';
+  inputType: 'image' | 'text' | 'noise' | 'image-to-image' | 'time-series';
+  outputType: 'classification' | 'object-detection' | 'text-generation' | 'image-generation' | 'time-series';
   inputTitle: string;
   inputPlaceholder: string;
   primaryBtnText: string;
@@ -62,6 +62,7 @@ export interface DomainConfig {
     ingestionFormats: { id: string; label: string }[];
     preprocessingOptions: PreprocessingOption[];
     defaultActions: TransformAction[];
+    defaultClassNames?: string[];
   };
 
   // 2. Model Builder Layout
