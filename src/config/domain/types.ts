@@ -63,6 +63,7 @@ export interface DomainConfig {
     preprocessingOptions: PreprocessingOption[];
     defaultActions: TransformAction[];
     defaultClassNames?: string[];
+    hideClassNames?: boolean;
   };
 
   // 2. Model Builder Layout

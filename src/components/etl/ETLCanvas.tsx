@@ -298,31 +298,33 @@ export const ETLCanvas: React.FC = () => {
             </div>
 
             {/* Class Names */}
-            <div className="text-left space-y-1.5">
-              <label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 flex items-center gap-1.5">
-                <Tags className="w-3.5 h-3.5 text-royalblue-500" />
-                <span>Target Class Names</span>
-              </label>
-              <form onSubmit={handleClassesSubmit} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="e.g. Cat, Dog, Bird"
-                  value={classInput}
-                  onChange={e => setClassInput(e.target.value)}
-                  className="flex-1 bg-neutral-50 dark:bg-neutral-900 rounded-lg px-3 py-2.5 text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-royalblue-500"
-                />
-                <button type="submit" className="px-3 py-2 bg-royalblue-600 hover:bg-royalblue-500 text-white rounded-lg text-xs font-semibold transition-colors">
-                  Set
-                </button>
-              </form>
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {(etl.classNames || []).map((name, i) => (
-                  <span key={i} className="text-[9px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded font-mono">
-                    {name}
-                  </span>
-                ))}
+            {!activeConfig?.pipeline.hideClassNames && (
+              <div className="text-left space-y-1.5">
+                <label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 flex items-center gap-1.5">
+                  <Tags className="w-3.5 h-3.5 text-royalblue-500" />
+                  <span>Target Class Names</span>
+                </label>
+                <form onSubmit={handleClassesSubmit} className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Cat, Dog, Bird"
+                    value={classInput}
+                    onChange={e => setClassInput(e.target.value)}
+                    className="flex-1 bg-neutral-50 dark:bg-neutral-900 rounded-lg px-3 py-2.5 text-xs text-neutral-900 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-royalblue-500"
+                  />
+                  <button type="submit" className="px-3 py-2 bg-royalblue-600 hover:bg-royalblue-500 text-white rounded-lg text-xs font-semibold transition-colors">
+                    Set
+                  </button>
+                </form>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(etl.classNames || []).map((name, i) => (
+                    <span key={i} className="text-[9px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded font-mono">
+                      {name}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

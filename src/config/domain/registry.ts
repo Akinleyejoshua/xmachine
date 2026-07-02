@@ -321,7 +321,8 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         { id: 'gan-resize', type: 'resize', params: { width: 64, height: 64 }, enabled: true },
         { id: 'gan-norm', type: 'pixel-normalize-1-1', params: {}, enabled: true }
       ],
-      defaultClassNames: ['Real Distribution', 'Synthesized']
+      defaultClassNames: ['Real Distribution', 'Synthesized'],
+      hideClassNames: true
     },
     modelBuilder: {
       layerOptions: [
@@ -402,7 +403,8 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       defaultActions: [
         { id: 'llm-tokenize', type: 'tokenize', params: { tokenizer: 'llama-style' }, enabled: true }
       ],
-      defaultClassNames: ['Target Instruction', 'Aligned Output']
+      defaultClassNames: ['Target Instruction', 'Aligned Output'],
+      hideClassNames: true
     },
     modelBuilder: {
       layerOptions: [
@@ -482,7 +484,8 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         { id: 'ts-windowing', type: 'sequence-windowing', params: { lookbackWindow: 30, forecastHorizon: 7 }, enabled: true },
         { id: 'ts-impute', type: 'sequence-imputation', params: { method: 'linear' }, enabled: true }
       ],
-      defaultClassNames: ['Value']
+      defaultClassNames: ['Value'],
+      hideClassNames: true
     },
     modelBuilder: {
       layerOptions: [
