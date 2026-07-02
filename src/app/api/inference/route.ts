@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from 'next/server';
 
 // Mock function for LLM inference (replace with actual LLM API call)
@@ -44,7 +42,7 @@ export async function POST(request: Request) {
     // Handle LLM domain specifically
     if (domain === "llm-finetuning") {
       const generatedText = await generateLLMResponse(prompt);
-      return NextResponse.json({ success: true, data: generatedText });
+      return NextResponse.json({ success: true, data: { text: generatedText } });
     }
 
     // Handle other domains (e.g., CV, GANs, etc.)
