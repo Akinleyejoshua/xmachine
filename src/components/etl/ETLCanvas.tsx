@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+"use client";
+
+import React from 'react';
 import { usePipelineStore } from '../../store/usePipelineStore';
-import { TransformAction } from '../../types/pipeline';
+import { useDomain } from '@/context/DomainContext';
 import { 
   Upload, 
   FolderPlus,

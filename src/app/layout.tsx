@@ -21,6 +21,7 @@ export const viewport = {
 };
 
 import { Navigation } from '../components/Navigation';
+import { DomainProvider } from '@/context/DomainContext';
 
 export default function RootLayout({
   children,
@@ -30,8 +31,10 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${bricolage.variable} dark`}>
       <body className="font-sans antialiased bg-white dark:bg-black text-neutral-900 dark:text-neutral-100 transition-colors duration-200">
-        <Navigation />
-        {children}
+        <DomainProvider>
+          <Navigation />
+          {children}
+        </DomainProvider>
       </body>
     </html>
   );
