@@ -62,7 +62,9 @@ export const Sandbox: React.FC = () => {
   const classNames = useMemo(() => {
     if (currentProject.domain === 'gans') return ['Real Distribution', 'Synthesized'];
     if (currentProject.domain === 'llm-finetuning') return ['Target Instruction', 'Aligned Output'];
-    return etl.classNames && etl.classNames.length > 0 ? etl.classNames : ['Cat', 'Dog', 'Bird'];
+    const domainConfig = DOMAIN_CONFIGS[currentProject.domain as keyof typeof DOMAIN_CONFIGS];
+    const domainDefaults = domainConfig?.pipeline?.defaultClassNames;
+    return etl.classNames && etl.classNames.length > 0 ? etl.classNames : domainDefaults && domainDefaults.length > 0 ? domainDefaults : ['Cat', 'Dog', 'Bird'];
   }, [etl.classNames, currentProject.domain]);
 
   const handlePredict = async () => {
