@@ -8,6 +8,7 @@ import {
   TransformAction,
   Hyperparameters,
 } from '../types/pipeline';
+import { DOMAIN_CONFIGS } from '../config/domain/registry';
 
 const DEFAULT_HYPERPARAMETERS: Hyperparameters = {
   optimizer: 'adam',
@@ -18,63 +19,14 @@ const DEFAULT_HYPERPARAMETERS: Hyperparameters = {
 };
 
 const getDomainDefaults = (domain: ProjectDomain) => {
-  let defaultLayers: ModelLayer[] = [];
-  let defaultActions: TransformAction[] = [];
-  let defaultHyperparameters: Hyperparameters = { ...DEFAULT_HYPERPARAMETERS };
-
-  switch (domain) {
-    case 'cv-classification':
-    case 'object-detection':
-      defaultActions = [
-        { id: 'img-resize', type: 'resize', params: { width: 224, height: 224 }, enabled: true },
-        { id: 'img-norm', type: 'pixel-normalize-0-1', params: {}, enabled: true },
-      ];
-      defaultLayers = [
-        { id: 'conv-1', type: 'conv2d', config: { filters: 32, kernelSize: 3, activation: 'relu', inputShape: [224, 224, 3] } },
-        { id: 'pool-1', type: 'maxPooling2d', config: { poolSize: 2 } },
-        { id: 'flatten-1', type: 'flatten', config: {} },
-        { id: 'dense-1', type: 'dense', config: { units: 64, activation: 'relu' } },
-        { id: 'output', type: 'dense', config: { units: 10, activation: 'softmax' } },
-      ];
-      break;
-
-    case 'nlp':
-      defaultActions = [
-        { id: 'text-lower', type: 'lowercase', params: {}, enabled: true },
-        { id: 'text-tokenize', type: 'tokenize', params: { vocabularySize: 5000, sequenceLength: 100 }, enabled: true },
-      ];
-      defaultLayers = [
-        { id: 'embed-1', type: 'embedding', config: { inputDim: 5000, outputDim: 128, inputLength: 100 } },
-        { id: 'lstm-1', type: 'lstm', config: { units: 64, returnSequences: false } },
-        { id: 'output', type: 'dense', config: { units: 2, activation: 'softmax' } },
-      ];
-      defaultHyperparameters.loss = 'binaryCrossentropy';
-      break;
-
-    case 'gans':
-      defaultActions = [
-        { id: 'gan-norm', type: 'pixel-normalize-1-1', params: {}, enabled: true },
-      ];
-      defaultLayers = [
-        { id: 'dense-gen', type: 'dense', config: { units: 256, activation: 'leakyRelu', inputShape: [100] } },
-        { id: 'dense-gen-out', type: 'dense', config: { units: 784, activation: 'tanh' } },
-      ];
-      defaultHyperparameters.loss = 'meanSquaredError';
-      break;
-
-    case 'llm-finetuning':
-      defaultActions = [
-        { id: 'llm-tokenize', type: 'tokenize', params: { tokenizer: 'llama-style' }, enabled: true },
-      ];
-      defaultLayers = [
-        { id: 'llm-lora-adapter', type: 'dense', config: { r: 8, loraAlpha: 16, targetModules: ['q_proj', 'v_proj'] } },
-      ];
-      defaultHyperparameters.optimizer = 'adam';
-      defaultHyperparameters.loss = 'sparseCategoricalCrossentropy';
-      break;
-  }
-
-  return { defaultLayers, defaultActions, defaultHyperparameters };
+  const config = DOMAIN_CONFIGS[domain];
+  return {
+    defaultLayers: config ? [...config.modelBuilder.defaultLayers] : [],
+    defaultActions: config ? [...config.pipeline.defaultActions] : [],
+    defaultHyperparameters: config
+      ? { ...config.modelBuilder.defaultHyperparameters }
+      : { ...DEFAULT_HYPERPARAMETERS },
+  };
 };
 
 export const usePipelineStore = create<PipelineState & PipelineActions>()(

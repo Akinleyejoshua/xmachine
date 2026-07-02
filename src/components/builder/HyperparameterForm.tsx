@@ -1,6 +1,7 @@
 import React from 'react';
 import { usePipelineStore } from '../../store/usePipelineStore';
 import { OptimizerType, LossFunctionType } from '../../types/pipeline';
+import { DOMAIN_CONFIGS } from '../../config/domain/registry';
 
 export const HyperparameterForm: React.FC = () => {
   const { modelConfig, updateHyperparameters, currentProject } = usePipelineStore();
@@ -8,6 +9,8 @@ export const HyperparameterForm: React.FC = () => {
   if (!currentProject) return null;
 
   const { hyperparameters } = modelConfig;
+  const activeConfig = DOMAIN_CONFIGS[currentProject.domain];
+  const lossFunctions = activeConfig?.modelBuilder.lossFunctions || [];
 
   const handleParamChange = (name: string, value: any) => {
     updateHyperparameters({ [name]: value });
@@ -42,10 +45,9 @@ export const HyperparameterForm: React.FC = () => {
             onChange={(e) => handleParamChange('loss', e.target.value as LossFunctionType)}
             className="w-full bg-white dark:bg-black rounded-lg px-3 py-2.5 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-1 focus:ring-royalblue-500"
           >
-            <option value="categoricalCrossentropy">Categorical Crossentropy (Multiclass)</option>
-            <option value="binaryCrossentropy">Binary Crossentropy (Binary Classification)</option>
-            <option value="meanSquaredError">Mean Squared Error (MSE)</option>
-            <option value="sparseCategoricalCrossentropy">Sparse Categorical Crossentropy</option>
+            {lossFunctions.map(lf => (
+              <option key={lf.id} value={lf.id}>{lf.label}</option>
+            ))}
           </select>
         </div>
 

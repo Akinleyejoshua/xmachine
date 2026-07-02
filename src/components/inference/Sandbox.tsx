@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { usePipelineStore } from '../../store/usePipelineStore';
 import { detectFileClass } from '../etl/ETLCanvas';
+import { DOMAIN_CONFIGS } from '../../config/domain/registry';
 import { 
   Send, 
   Upload, 
@@ -54,35 +55,23 @@ export const Sandbox: React.FC = () => {
 
   if (!currentProject) return null;
 
-  const isCV = currentProject.domain === 'cv-classification' || currentProject.domain === 'object-detection';
-  const isObjectDetection = currentProject.domain === 'object-detection';
+  const activeConfig = DOMAIN_CONFIGS[currentProject.domain];
+  const isCV = activeConfig?.sandbox.inputType === 'image';
+  const isObjectDetection = activeConfig?.sandbox.outputType === 'object-detection';
+
   const classNames = useMemo(() => {
+    if (currentProject.domain === 'gans') return ['Real Distribution', 'Synthesized'];
+    if (currentProject.domain === 'llm-finetuning') return ['Target Instruction', 'Aligned Output'];
     return etl.classNames && etl.classNames.length > 0 ? etl.classNames : ['Cat', 'Dog', 'Bird'];
-  }, [etl.classNames]);
+  }, [etl.classNames, currentProject.domain]);
 
   const handlePredict = () => {
     setInferenceActive(true);
 
     setTimeout(() => {
-      const predictedClass = classNames[Math.floor(Math.random() * classNames.length)] || 'Default Class';
-
-      if (isCV) {
-        setInferenceResult({
-          class: predictedClass,
-          confidence: 0.942,
-          latencyMs: 14,
-          boundingBoxes: isObjectDetection ? [
-            { label: predictedClass, bbox: [25, 20, 50, 60] }
-          ] : undefined
-        });
-      } else {
-        setInferenceResult({
-          sentiment: 'Positive',
-          confidence: 0.887,
-          tokens: 5,
-          latencyMs: 8
-        });
-      }
+      const inputVal = activeConfig?.sandbox.inputType === 'image' ? imagePreview : textVal;
+      const result = activeConfig?.sandbox.defaultMockResult(inputVal || '', classNames);
+      setInferenceResult(result);
       setInferenceActive(false);
     }, 600);
   };
@@ -92,36 +81,24 @@ export const Sandbox: React.FC = () => {
     setBulkResults(null);
 
     setTimeout(() => {
-      const evaluationItems: BulkItem[] = etl.files.length > 0 ? etl.files.map(file => {
-        const trueClass = detectFileClass(file.name, classNames) || classNames[0] || 'Default';
-        
-        const isCorrect = Math.random() > 0.15; // ~85% accuracy
-        const confidence = 0.70 + Math.random() * 0.28;
-        const latencyMs = Math.floor(8 + Math.random() * 12);
-        
-        let predClass = trueClass;
-        if (!isCorrect) {
-          const alternateClasses = classNames.filter(c => c !== trueClass);
-          predClass = alternateClasses[Math.floor(Math.random() * alternateClasses.length)] || 'IncorrectClass';
-        }
-
-        return { name: file.name, trueClass, predClass, confidence, latencyMs, correct: isCorrect };
+      const items: BulkItem[] = etl.files.length > 0 ? etl.files.map(file => {
+        return activeConfig?.sandbox.bulkMockResult(file.name, classNames);
       }) : [
-        { name: 'val_image_01.jpg', trueClass: classNames[0] || 'TargetA', predClass: classNames[0] || 'TargetA', confidence: 0.942, latencyMs: 11, correct: true },
-        { name: 'val_image_02.jpg', trueClass: classNames[0] || 'TargetA', predClass: classNames[1] || 'TargetB', confidence: 0.812, latencyMs: 14, correct: false },
-        { name: 'val_image_03.jpg', trueClass: classNames[1] || 'TargetB', predClass: classNames[1] || 'TargetB', confidence: 0.899, latencyMs: 10, correct: true },
-        { name: 'val_image_04.jpg', trueClass: classNames[0] || 'TargetA', predClass: classNames[0] || 'TargetA', confidence: 0.923, latencyMs: 9, correct: true },
-        { name: 'val_image_05.jpg', trueClass: classNames[1] || 'TargetB', predClass: classNames[1] || 'TargetB', confidence: 0.954, latencyMs: 12, correct: true },
-        { name: 'val_image_06.jpg', trueClass: classNames[2] || 'TargetC', predClass: classNames[2] || 'TargetC', confidence: 0.885, latencyMs: 11, correct: true },
-        { name: 'val_image_07.jpg', trueClass: classNames[2] || 'TargetC', predClass: classNames[0] || 'TargetA', confidence: 0.765, latencyMs: 15, correct: false },
+        activeConfig?.sandbox.bulkMockResult('val_sample_01.dat', classNames),
+        activeConfig?.sandbox.bulkMockResult('val_sample_02.dat', classNames),
+        activeConfig?.sandbox.bulkMockResult('val_sample_03.dat', classNames),
+        activeConfig?.sandbox.bulkMockResult('val_sample_04.dat', classNames),
+        activeConfig?.sandbox.bulkMockResult('val_sample_05.dat', classNames),
+        activeConfig?.sandbox.bulkMockResult('val_sample_06.dat', classNames),
+        activeConfig?.sandbox.bulkMockResult('val_sample_07.dat', classNames)
       ];
 
-      const correctCount = evaluationItems.filter(item => item.correct).length;
-      const incorrectCount = evaluationItems.length - correctCount;
-      const avgLatency = Math.round(evaluationItems.reduce((acc, item) => acc + item.latencyMs, 0) / evaluationItems.length);
-      const accuracy = correctCount / evaluationItems.length;
+      const correctCount = items.filter(item => item.correct).length;
+      const incorrectCount = items.length - correctCount;
+      const avgLatency = Math.round(items.reduce((acc, item) => acc + item.latencyMs, 0) / items.length);
+      const accuracy = correctCount / items.length;
 
-      setBulkResults({ accuracy, total: evaluationItems.length, correct: correctCount, incorrect: incorrectCount, avgLatency, items: evaluationItems });
+      setBulkResults({ accuracy, total: items.length, correct: correctCount, incorrect: incorrectCount, avgLatency, items });
       setBulkActive(false);
     }, 1200);
   };
@@ -250,9 +227,9 @@ export const Sandbox: React.FC = () => {
           <div className="space-y-4 text-left">
             <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">Sandbox Input</span>
             
-            {isCV ? (
+            {activeConfig?.sandbox.inputType === 'image' && (
               <div className="space-y-4">
-                <div className="relative bg-white dark:bg-neutral-950 rounded-xl p-4 text-center flex items-center justify-center min-h-[220px] shadow-sm border border-neutral-105 dark:border-neutral-900">
+                <div className="relative bg-white dark:bg-neutral-950 rounded-xl p-4 text-center flex items-center justify-center min-h-[220px] shadow-sm border border-neutral-100 dark:border-neutral-900">
                   <input 
                     type="file" 
                     accept="image/*" 
@@ -268,7 +245,7 @@ export const Sandbox: React.FC = () => {
                         alt="Preview" 
                         className="max-h-[200px] rounded-lg object-contain animate-fadeIn" 
                       />
-                      {isObjectDetection && inferenceResult?.boundingBoxes?.map((box: any, i: number) => (
+                      {activeConfig?.sandbox.outputType === 'object-detection' && inferenceResult?.boundingBoxes?.map((box: any, i: number) => (
                         <div
                           key={i}
                           className="absolute border-2 border-royalblue-500 rounded animate-pulse pointer-events-none"
@@ -287,9 +264,9 @@ export const Sandbox: React.FC = () => {
                     </div>
                   ) : (
                     <label htmlFor="sandbox-img-upload" className="cursor-pointer space-y-2 block w-full py-6">
-                      <Upload className="w-8 h-8 text-neutral-400 dark:text-neutral-500 mx-auto mb-2" />
+                      <Upload className="w-8 h-8 text-neutral-400 dark:text-neutral-505 mx-auto mb-2" />
                       <p className="text-xs text-neutral-700 dark:text-neutral-300 font-semibold">Select test image</p>
-                      <p className="text-[10px] text-neutral-400">PNG, JPG, WEBP supported</p>
+                      <p className="text-[10px] text-neutral-400">{activeConfig.sandbox.inputPlaceholder}</p>
                     </label>
                   )}
                 </div>
@@ -300,25 +277,72 @@ export const Sandbox: React.FC = () => {
                   className="w-full py-2.5 bg-royalblue-600 hover:bg-royalblue-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-colors shadow-sm"
                 >
                   {inferenceActive ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Layers className="w-3.5 h-3.5" />}
-                  <span>Compute Inference</span>
+                  <span>{activeConfig.sandbox.primaryBtnText}</span>
                 </button>
               </div>
-            ) : (
+            )}
+
+            {activeConfig?.sandbox.inputType === 'text' && (
               <div className="space-y-4">
                 <textarea
-                  placeholder="Enter sample sentence or token sequence here..."
+                  placeholder={activeConfig.sandbox.inputPlaceholder}
                   value={textVal}
                   onChange={(e) => setTextVal(e.target.value)}
                   disabled={inferenceActive}
                   className="w-full h-36 bg-white dark:bg-neutral-950 rounded-xl p-4 text-xs text-neutral-800 dark:text-neutral-200 placeholder-neutral-400 dark:placeholder-neutral-600 border border-neutral-100 dark:border-neutral-900 focus:outline-none disabled:opacity-60 resize-none shadow-sm"
                 />
+                {currentProject.domain === 'llm-finetuning' && (
+                  <div className="grid grid-cols-3 gap-3 text-xs pt-1">
+                    <div>
+                      <label className="text-[9px] text-neutral-400 font-bold uppercase tracking-wider block mb-1">Temperature</label>
+                      <input type="number" defaultValue={0.7} step={0.1} min={0.1} max={1.5} className="w-full bg-white dark:bg-neutral-950 rounded border border-neutral-100 dark:border-neutral-900 px-2.5 py-1.5 text-neutral-800 dark:text-neutral-205 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-neutral-400 font-bold uppercase tracking-wider block mb-1">Top P</label>
+                      <input type="number" defaultValue={0.9} step={0.05} min={0.1} max={1.0} className="w-full bg-white dark:bg-neutral-950 rounded border border-neutral-100 dark:border-neutral-900 px-2.5 py-1.5 text-neutral-800 dark:text-neutral-205 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-neutral-400 font-bold uppercase tracking-wider block mb-1">Max Tokens</label>
+                      <input type="number" defaultValue={256} step={64} min={1} max={4096} className="w-full bg-white dark:bg-neutral-950 rounded border border-neutral-100 dark:border-neutral-900 px-2.5 py-1.5 text-neutral-800 dark:text-neutral-205 focus:outline-none" />
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={handlePredict}
                   disabled={!textVal.trim() || inferenceActive}
                   className="w-full py-2.5 bg-royalblue-600 hover:bg-royalblue-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-colors shadow-sm"
                 >
                   {inferenceActive ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  <span>Evaluate Sequence</span>
+                  <span>{activeConfig.sandbox.primaryBtnText}</span>
+                </button>
+              </div>
+            )}
+
+            {activeConfig?.sandbox.inputType === 'noise' && (
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-neutral-950 rounded-xl p-6 border border-neutral-100 dark:border-neutral-900 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-neutral-500 font-medium">Latent Vector Random Seed</span>
+                    <button type="button" onClick={() => setTextVal(Math.floor(Math.random() * 999999).toString())} className="text-royalblue-500 hover:text-royalblue-600 font-bold">Randomize</button>
+                  </div>
+                  <input
+                    type="range" min={0} max={999999} step={1}
+                    value={textVal || '42'}
+                    onChange={e => setTextVal(e.target.value)}
+                    className="w-full accent-royalblue-500 h-1.5 rounded-full"
+                  />
+                  <div className="flex justify-between text-[10px] text-neutral-400 font-mono">
+                    <span>Seed:</span>
+                    <span className="text-royalblue-500 font-bold">{textVal || '42'}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handlePredict}
+                  className="w-full py-2.5 bg-royalblue-600 hover:bg-royalblue-500 text-white rounded-xl flex items-center justify-center gap-2 text-xs font-semibold transition-colors shadow-sm"
+                >
+                  {inferenceActive ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                  <span>{activeConfig.sandbox.primaryBtnText}</span>
                 </button>
               </div>
             )}
@@ -326,27 +350,93 @@ export const Sandbox: React.FC = () => {
 
           {/* Output Panel */}
           <div className="bg-white dark:bg-neutral-950 rounded-xl p-6 flex flex-col justify-between shadow-sm border border-neutral-100 dark:border-neutral-900">
-            <div className="text-left">
-              <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block mb-5">Inference Output</span>
+            <div className="text-left w-full">
+              <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block mb-5">
+                {activeConfig?.sandbox.outputTitle}
+              </span>
               
               {inferenceResult ? (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-2.5">
-                    <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Predicted Target</span>
-                    <span className="text-xs font-bold text-royalblue-500 dark:text-royalblue-400 font-mono">
-                      {isCV ? inferenceResult.class : inferenceResult.sentiment}
-                    </span>
-                  </div>
+                <div className="space-y-3 w-full">
+                  
+                  {activeConfig?.sandbox.outputType === 'classification' && (
+                    <>
+                      <div className="flex justify-between items-center py-2.5">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Predicted Target</span>
+                        <span className="text-xs font-bold text-royalblue-500 dark:text-royalblue-400 font-mono">
+                          {inferenceResult.class || inferenceResult.sentiment}
+                        </span>
+                      </div>
+                      <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
+                      <div className="flex justify-between items-center py-2.5">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Confidence Margin</span>
+                        <span className="text-xs font-bold text-neutral-900 dark:text-white font-mono">
+                          {(inferenceResult.confidence * 100).toFixed(2)}%
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {activeConfig?.sandbox.outputType === 'object-detection' && (
+                    <>
+                      <div className="flex justify-between items-center py-2.5">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Primary Detection</span>
+                        <span className="text-xs font-bold text-royalblue-500 dark:text-royalblue-400 font-mono">
+                          {inferenceResult.class}
+                        </span>
+                      </div>
+                      <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
+                      <div className="flex justify-between items-center py-2.5">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Bounding Boxes</span>
+                        <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 font-mono">
+                          {inferenceResult.boundingBoxes?.length || 0} items
+                        </span>
+                      </div>
+                      <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
+                      <div className="flex justify-between items-center py-2.5">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Localization Conf.</span>
+                        <span className="text-xs font-bold text-neutral-900 dark:text-white font-mono">
+                          {(inferenceResult.confidence * 100).toFixed(2)}%
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {activeConfig?.sandbox.outputType === 'text-generation' && (
+                    <div className="space-y-3">
+                      <div className="text-neutral-500 text-xs font-medium mb-1">Generated Output:</div>
+                      <div className="bg-neutral-50 dark:bg-neutral-900 p-4 rounded-xl border border-neutral-100 dark:border-neutral-900 text-xs text-neutral-800 dark:text-neutral-200 font-mono leading-relaxed whitespace-pre-wrap max-h-[200px] overflow-y-auto">
+                        {inferenceResult.text}
+                      </div>
+                      <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
+                      <div className="flex justify-between items-center py-1">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Sequence Perplexity</span>
+                        <span className="text-xs font-bold text-royalblue-500 font-mono">{inferenceResult.perplexity}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {activeConfig?.sandbox.outputType === 'image-generation' && (
+                    <div className="space-y-4 text-center">
+                      <div className="bg-neutral-950 p-2 rounded-xl inline-block border border-neutral-900">
+                        <div className="grid grid-cols-3 gap-1">
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((imgNum) => (
+                            <div key={imgNum} className="w-12 h-12 bg-royalblue-500/20 rounded border border-royalblue-500/10 flex items-center justify-center text-[9px] text-royalblue-400 font-mono font-bold">
+                              Gen {imgNum}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
+                      <div className="flex justify-between items-center py-1">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">FID Score</span>
+                        <span className="text-xs font-bold text-green-500 font-mono">{inferenceResult.fidScore}</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
                   <div className="flex justify-between items-center py-2.5">
-                    <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Confidence Margin</span>
-                    <span className="text-xs font-bold text-neutral-900 dark:text-white font-mono">
-                      {(inferenceResult.confidence * 100).toFixed(2)}%
-                    </span>
-                  </div>
-                  <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
-                  <div className="flex justify-between items-center py-2.5">
-                    <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Latency</span>
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Inference Latency</span>
                     <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 font-mono">
                       {inferenceResult.latencyMs} ms
                     </span>
@@ -358,7 +448,7 @@ export const Sandbox: React.FC = () => {
                 </div>
               )}
             </div>
-
+            
             <div className="pt-5">
               <button
                 onClick={() => {

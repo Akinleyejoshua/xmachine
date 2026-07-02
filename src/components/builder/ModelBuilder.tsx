@@ -5,6 +5,7 @@ import {
   Plus, Trash2, ChevronDown, ChevronUp, Network,
   Cpu, Layers, BarChart3, Save, RefreshCw, Info
 } from 'lucide-react';
+import { DOMAIN_CONFIGS } from '../../config/domain/registry';
 
 // ─── Layer colour map ──────────────────────────────────────────────────────────
 const LAYER_COLORS: Record<string, string> = {
@@ -94,7 +95,10 @@ export const ModelBuilder: React.FC = () => {
 
   if (!currentProject) return null;
 
-  const isCV = currentProject.domain === 'cv-classification' || currentProject.domain === 'object-detection';
+  const activeConfig = DOMAIN_CONFIGS[currentProject.domain];
+  const layerOptions = activeConfig?.modelBuilder.layerOptions || [];
+  const categories = Array.from(new Set(layerOptions.map(opt => opt.category)));
+
   const hp = modelConfig.hyperparameters;
   const layers = modelConfig.layers;
   const classCount = etl.classNames?.length || 0;
@@ -108,22 +112,12 @@ export const ModelBuilder: React.FC = () => {
 
   const handleAddLayer = () => {
     if (!selectedLayerType) return;
-    const defaults: Record<string, Record<string, any>> = {
-      conv2d:        { filters: 32, kernelSize: 3, activation: 'relu', padding: 'same', dropout: 0 },
-      maxPooling2d:  { poolSize: 2, strides: 2 },
-      flatten:       {},
-      dense:         { units: 64, activation: 'relu', dropout: 0, l2: 0 },
-      dropout:       { rate: 0.25 },
-      embedding:     { inputDim: 5000, outputDim: 128, inputLength: 100 },
-      lstm:          { units: 64, returnSequences: false, dropout: 0, recurrentDropout: 0 },
-      gru:           { units: 64, returnSequences: false, dropout: 0 },
-      bidirectional: { units: 64, returnSequences: false },
-      batchNorm:     { momentum: 0.99, epsilon: 0.001 },
-    };
+    const selectedOption = layerOptions.find(opt => opt.id === selectedLayerType);
+    const defaultParams = selectedOption ? { ...selectedOption.defaultParams } : {};
     const newLayer: ModelLayer = {
       id: Math.random().toString(36).substring(7),
       type: selectedLayerType as LayerType,
-      config: defaults[selectedLayerType] || {},
+      config: defaultParams,
     };
     addLayer(newLayer);
     setSelectedLayerType('');
@@ -208,34 +202,17 @@ export const ModelBuilder: React.FC = () => {
               className="flex-1 bg-white dark:bg-neutral-950 rounded-xl px-3 py-2.5 text-xs text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-royalblue-500 shadow-sm"
             >
               <option value="">Add layer to architecture...</option>
-              {isCV ? (
-                <>
-                  <optgroup label="Convolutional">
-                    <option value="conv2d">Conv2D — Convolutional</option>
-                    <option value="maxPooling2d">MaxPooling2D</option>
-                    <option value="flatten">Flatten</option>
-                  </optgroup>
-                  <optgroup label="Fully Connected">
-                    <option value="dense">Dense — Fully Connected</option>
-                    <option value="dropout">Dropout</option>
-                    <option value="batchNorm">Batch Normalization</option>
-                  </optgroup>
-                </>
-              ) : (
-                <>
-                  <optgroup label="Sequence / Embedding">
-                    <option value="embedding">Embedding</option>
-                    <option value="lstm">LSTM</option>
-                    <option value="gru">GRU</option>
-                    <option value="bidirectional">Bidirectional</option>
-                  </optgroup>
-                  <optgroup label="Fully Connected">
-                    <option value="dense">Dense — Fully Connected</option>
-                    <option value="dropout">Dropout</option>
-                    <option value="batchNorm">Batch Normalization</option>
-                  </optgroup>
-                </>
-              )}
+              {categories.map(cat => (
+                <optgroup key={cat} label={cat}>
+                  {layerOptions
+                    .filter(opt => opt.category === cat)
+                    .map(opt => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
             </select>
             <button
               onClick={handleAddLayer}

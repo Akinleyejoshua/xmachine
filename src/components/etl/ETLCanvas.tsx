@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePipelineStore } from '../../store/usePipelineStore';
 import { TransformAction } from '../../types/pipeline';
+import { DOMAIN_CONFIGS } from '../../config/domain/registry';
 import { 
   Upload, 
   FolderPlus,
@@ -167,7 +168,21 @@ export const ETLCanvas: React.FC = () => {
 
   if (!currentProject) return null;
 
-  const isCV = currentProject.domain === 'cv-classification' || currentProject.domain === 'object-detection';
+  const activeConfig = DOMAIN_CONFIGS[currentProject.domain];
+  const allowedExtensions = activeConfig?.pipeline.allowedExtensions || [];
+  const ingestionFormats = activeConfig?.pipeline.ingestionFormats || [];
+  const preprocessingOptions = activeConfig?.pipeline.preprocessingOptions || [];
+  const acceptAttribute = allowedExtensions.join(',');
+
+  // Group preprocessing options by category
+  const categories = Array.from(new Set(preprocessingOptions.map(opt => opt.category)));
+
+  React.useEffect(() => {
+    if (activeConfig?.pipeline.ingestionFormats && activeConfig.pipeline.ingestionFormats.length > 0) {
+      setDatasetFormat(activeConfig.pipeline.ingestionFormats[0].id);
+    }
+  }, [currentProject.domain, activeConfig]);
+
   const split = etl.splitRatio || { train: 80, val: 20, test: 0 };
   const totalFiles = etl.files.length;
   const trainCount = Math.round(totalFiles * split.train / 100);
@@ -191,33 +206,39 @@ export const ETLCanvas: React.FC = () => {
   };
 
   const handleUploadedFiles = (files: File[]) => {
-    const newFiles = files.map(file => {
-      let type: 'csv' | 'json' | 'txt' | 'image' = 'txt';
-      if (file.type.includes('image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name)) type = 'image';
-      else if (file.name.endsWith('.csv')) type = 'csv';
-      else if (file.name.endsWith('.json') || file.name.endsWith('.xml')) type = 'json';
-      return {
-        id: Math.random().toString(36).substring(7),
-        name: (file as any).webkitRelativePath || file.name,
-        size: file.size, type,
-      };
-    });
+    const newFiles = files
+      .filter(file => {
+        const name = file.name.toLowerCase();
+        return allowedExtensions.some(ext => name.endsWith(ext));
+      })
+      .map(file => {
+        let type: 'csv' | 'json' | 'txt' | 'image' = 'txt';
+        if (file.type.includes('image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name)) type = 'image';
+        else if (file.name.endsWith('.csv')) type = 'csv';
+        else if (file.name.endsWith('.json') || file.name.endsWith('.xml')) type = 'json';
+        return {
+          id: Math.random().toString(36).substring(7),
+          name: (file as any).webkitRelativePath || file.name,
+          size: file.size, type,
+        };
+      });
+
+    if (newFiles.length === 0) {
+      alert(`No valid files found for the active domain (${activeConfig?.displayName}). Allowed extensions: ${allowedExtensions.join(', ')}`);
+      return;
+    }
     addFiles(newFiles);
   };
 
   const handleAddAction = () => {
     if (!selectedActionType) return;
+    const selectedOption = preprocessingOptions.find(opt => opt.type === selectedActionType);
+    const defaultParams = selectedOption ? { ...selectedOption.defaultParams } : {};
+
     const newAction: TransformAction = {
       id: Math.random().toString(36).substring(7),
       type: selectedActionType as any,
-      params: selectedActionType === 'resize' ? { width: 224, height: 224 }
-        : selectedActionType === 'tokenize' ? { vocabularySize: 5000, sequenceLength: 100 }
-        : selectedActionType === 'missing-values-impute' ? { strategy: 'mean' }
-        : selectedActionType === 'standard-scale' ? { withMean: true, withStd: true }
-        : selectedActionType === 'augment-rotate' ? { maxAngle: 30 }
-        : selectedActionType === 'augment-brightness' ? { factor: 0.2 }
-        : selectedActionType === 'augment-zoom' ? { factor: 0.2 }
-        : {},
+      params: defaultParams,
       enabled: true,
     };
     addAction(newAction);
@@ -270,10 +291,9 @@ export const ETLCanvas: React.FC = () => {
                 onChange={e => setDatasetFormat(e.target.value)}
                 className="w-full bg-neutral-50 dark:bg-neutral-900 rounded-lg px-3 py-2.5 text-xs text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-royalblue-500"
               >
-                <option value="standard">Standard (Images / CSV / JSON)</option>
-                <option value="yolo">YOLO (Images + TXT labels)</option>
-                <option value="voc">Pascal VOC (Images + XML annotations)</option>
-                <option value="coco">COCO JSON (Annotations + Images)</option>
+                {ingestionFormats.map(fmt => (
+                  <option key={fmt.id} value={fmt.id}>{fmt.label}</option>
+                ))}
               </select>
             </div>
 
@@ -320,8 +340,8 @@ export const ETLCanvas: React.FC = () => {
               dragActive ? 'bg-royalblue-500/5' : 'bg-white dark:bg-neutral-950 shadow-sm'
             }`}
           >
-            <input type="file" multiple onChange={handleFileInput} className="hidden" id="file-upload" />
-            <input type="file" multiple onChange={handleFileInput} className="hidden" id="folder-upload"
+            <input type="file" accept={acceptAttribute} multiple onChange={handleFileInput} className="hidden" id="file-upload" />
+            <input type="file" accept={acceptAttribute} multiple onChange={handleFileInput} className="hidden" id="folder-upload"
               {...({ webkitdirectory: '', directory: '' } as any)} />
             <div className="space-y-4">
               <div className="w-12 h-12 bg-neutral-100 dark:bg-neutral-900 rounded-full flex items-center justify-center mx-auto">
@@ -329,7 +349,7 @@ export const ETLCanvas: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-neutral-700 dark:text-neutral-300 font-semibold">Drag &amp; drop files or folders</p>
-                <p className="text-xs text-neutral-500 mt-1">CSV, JSON, TXT, XML, or Image sequences</p>
+                <p className="text-xs text-neutral-500 mt-1">Allowed: {allowedExtensions.join(', ')}</p>
               </div>
               <div className="flex flex-wrap justify-center gap-2 sm:gap-3 pt-2">
                 <label htmlFor="file-upload" className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-lg text-xs font-semibold cursor-pointer transition-all">
@@ -383,36 +403,17 @@ export const ETLCanvas: React.FC = () => {
               className="flex-1 bg-white dark:bg-neutral-950 rounded-lg px-3 py-2 text-xs text-neutral-700 dark:text-neutral-300 focus:outline-none focus:ring-1 focus:ring-royalblue-500 shadow-sm"
             >
               <option value="">Select Transformation...</option>
-              {isCV ? (
-                <>
-                  <optgroup label="Preprocessing">
-                    <option value="resize">Resize Image</option>
-                    <option value="grayscale">Convert to Grayscale</option>
-                    <option value="pixel-normalize-0-1">Pixel Scale [0, 1]</option>
-                    <option value="pixel-normalize-1-1">Pixel Scale [-1, 1]</option>
-                    <option value="standard-scale">Standard Scale (z-score)</option>
-                  </optgroup>
-                  <optgroup label="Augmentation">
-                    <option value="augment-flip">Augment: Horizontal Flip</option>
-                    <option value="augment-rotate">Augment: Random Rotation</option>
-                    <option value="augment-brightness">Augment: Brightness Jitter</option>
-                    <option value="augment-zoom">Augment: Random Zoom</option>
-                  </optgroup>
-                </>
-              ) : (
-                <>
-                  <optgroup label="Text Preprocessing">
-                    <option value="lowercase">To Lowercase</option>
-                    <option value="tokenize">Tokenize Sequence</option>
-                    <option value="remove-stopwords">Remove Stopwords</option>
-                  </optgroup>
-                  <optgroup label="Feature Engineering">
-                    <option value="missing-values-impute">Impute Missing Values</option>
-                    <option value="standard-scale">Standard Scale (z-score)</option>
-                    <option value="normalize">Min-Max Normalize</option>
-                  </optgroup>
-                </>
-              )}
+              {categories.map(cat => (
+                <optgroup key={cat} label={cat}>
+                  {preprocessingOptions
+                    .filter(opt => opt.category === cat)
+                    .map(opt => (
+                      <option key={opt.id} value={opt.type}>
+                        {opt.label}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
             </select>
             <button
               onClick={handleAddAction}

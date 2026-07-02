@@ -5,6 +5,7 @@ import {
   Activity, Disc, GitCommitHorizontal, History, Cpu, ShieldAlert,
   Terminal, Code2, Settings, Zap, HardDrive, RefreshCw, Copy, Check
 } from 'lucide-react';
+import { DOMAIN_CONFIGS } from '../../config/domain/registry';
 
 type ChartType = 'line' | 'area' | 'bar' | 'scatter' | 'smooth';
 
@@ -280,19 +281,29 @@ print("PyTorch model ready for scaling!")
         currentLr = initialLr * Math.pow(0.5, Math.floor(epoch / 5));
       }
 
-      const factor = 1 / (1 + epoch * 0.15);
-      const loss = parseFloat((0.8 * factor + Math.random() * 0.03).toFixed(4));
-      const accuracy = parseFloat((0.2 + (0.75 * (1 - factor)) + Math.random() * 0.02).toFixed(4));
-      const valLoss = parseFloat((0.85 * factor + Math.random() * 0.05).toFixed(4));
-      const valAccuracy = parseFloat((0.18 + (0.72 * (1 - factor)) + Math.random() * 0.03).toFixed(4));
-
-      updateMetrics({ epoch, loss, accuracy, valLoss, valAccuracy });
+      const activeConfig = DOMAIN_CONFIGS[currentProject.domain];
+      const epochMetrics = activeConfig.training.generateMockMetrics(epoch, targetEpoch, currentLr);
+      
+      const trainingMetric = {
+        epoch,
+        loss: epochMetrics.loss ?? 0.5,
+        accuracy: epochMetrics.accuracy,
+        valLoss: epochMetrics.valLoss,
+        valAccuracy: epochMetrics.valAccuracy,
+        ...epochMetrics
+      };
+      updateMetrics(trainingMetric);
 
       // Append logs
+      const metricsText = activeConfig.training.metrics.map(m => {
+        const val = epochMetrics[m.id];
+        return `${m.label}: ${val !== undefined ? val.toFixed(4) : 'N/A'}`;
+      }).join(' - ');
+
       const timeMs = 400 + Math.floor(Math.random() * 120);
       setLogs(prev => [
         ...prev,
-        `Epoch ${epoch}/${targetEpoch} [==============================] - ${timeMs}ms/step - loss: ${loss.toFixed(4)} - accuracy: ${accuracy.toFixed(4)} - val_loss: ${valLoss.toFixed(4)} - val_accuracy: ${valAccuracy.toFixed(4)} - lr: ${currentLr.toFixed(6)}`
+        `Epoch ${epoch}/${targetEpoch} [==============================] - ${timeMs}ms/step - ${metricsText} - lr: ${currentLr.toFixed(6)}`
       ]);
 
       if (epoch % 2 === 0 || epoch === targetEpoch) {
@@ -312,11 +323,15 @@ print("PyTorch model ready for scaling!")
         clearInterval(id);
         setIntervalId(null);
         setTrainingStatus('completed');
+        const finalMetricsText = activeConfig.training.metrics.slice(0, 2).map(m => {
+          const val = epochMetrics[m.id];
+          return `${m.label}: ${val !== undefined ? val.toFixed(4) : 'N/A'}`;
+        }).join(' - ');
         setLogs(prev => [
           ...prev,
           `----------------------------------------------------------------------`,
           `[SUCCESS] Training process completed successfully. Target epoch reached.`,
-          `[SUCCESS] Final Metrics - Loss: ${loss.toFixed(4)} - Accuracy: ${accuracy.toFixed(4)}`
+          `[SUCCESS] Final Metrics - ${finalMetricsText}`
         ]);
       }
     }, 1200);
@@ -345,31 +360,39 @@ print("PyTorch model ready for scaling!")
   const n = metricsHistory.length;
   const stepX = n > 1 ? plotW / (n - 1) : plotW;
 
-  const maxLoss = Math.max(...metricsHistory.map(h => h.loss), 1.0);
+  const activeConfig = DOMAIN_CONFIGS[currentProject.domain];
 
-  const getXY = (index: number, type: 'accuracy' | 'loss') => {
+  const getStrokeColor = (cls: string) => {
+    if (cls.includes('royalblue')) return '#4169e1';
+    if (cls.includes('green')) return '#22c55e';
+    if (cls.includes('rose') || cls.includes('red')) return '#f43f5e';
+    if (cls.includes('orange') || cls.includes('amber')) return '#f97316';
+    return '#a3a3a3';
+  };
+
+  const getXY = (index: number, metricId: string) => {
     const x = PL + index * stepX;
-    const val = type === 'accuracy'
-      ? (metricsHistory[index].accuracy || 0)
-      : (metricsHistory[index].loss / maxLoss);
-    const y = H - PB - val * plotH;
+    const val = (metricsHistory[index] as any)[metricId] !== undefined ? ((metricsHistory[index] as any)[metricId] as number) : 0;
+    const maxVal = Math.max(...metricsHistory.map(h => ((h as any)[metricId] as number) || 0), 1.0);
+    const norm = maxVal > 0 ? val / maxVal : 0;
+    const y = H - PB - norm * plotH;
     return { x, y, val };
   };
 
   // Smooth cubic bezier path
-  const smoothPath = (type: 'accuracy' | 'loss') => {
+  const smoothPath = (metricId: string) => {
     if (n === 0) return '';
     if (n === 1) {
-      const { x, y } = getXY(0, type);
+      const { x, y } = getXY(0, metricId);
       return `M ${x} ${y}`;
     }
     let d = '';
     for (let i = 0; i < n; i++) {
-      const { x, y } = getXY(i, type);
+      const { x, y } = getXY(i, metricId);
       if (i === 0) {
         d += `M ${x} ${y}`;
       } else {
-        const prev = getXY(i - 1, type);
+        const prev = getXY(i - 1, metricId);
         const cpx = (prev.x + x) / 2;
         d += ` C ${cpx} ${prev.y}, ${cpx} ${y}, ${x} ${y}`;
       }
@@ -377,28 +400,28 @@ print("PyTorch model ready for scaling!")
     return d;
   };
 
-  const polyPoints = (type: 'accuracy' | 'loss') =>
+  const polyPoints = (metricId: string) =>
     metricsHistory.map((_, i) => {
-      const { x, y } = getXY(i, type);
+      const { x, y } = getXY(i, metricId);
       return `${x},${y}`;
     }).join(' ');
 
-  const areaPath = (type: 'accuracy' | 'loss', smooth = false) => {
+  const areaPath = (metricId: string, smooth = false) => {
     if (n === 0) return '';
     const base = H - PB;
     if (smooth) {
-      const p = smoothPath(type);
-      const last = getXY(n - 1, type);
-      const first = getXY(0, type);
+      const p = smoothPath(metricId);
+      const last = getXY(n - 1, metricId);
+      const first = getXY(0, metricId);
       return `${p} L ${last.x} ${base} L ${first.x} ${base} Z`;
     }
     const pts = metricsHistory.map((_, i) => {
-      const { x, y } = getXY(i, type);
+      const { x, y } = getXY(i, metricId);
       return `${x},${y}`;
     });
-    const last = getXY(n - 1, type);
-    const first = getXY(0, type);
-    return `M ${first.x} ${first.y} L ${pts.join(' L ')} L ${last.x} ${base} L ${first.x} ${base} Z`;
+    const last = getXY(n - 1, metricId);
+    const first = getXY(0, metricId);
+    return `M ${first.x} ${base} L ${pts.join(' L ')} L ${last.x} ${base} L ${first.x} ${base} Z`;
   };
 
   const yLabels = [1.0, 0.75, 0.5, 0.25, 0.0];
@@ -476,7 +499,7 @@ print("PyTorch model ready for scaling!")
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 ${activeConfig.training.metrics.length > 2 ? 'md:grid-cols-6' : 'md:grid-cols-4'} gap-4`}>
         <div className="bg-white dark:bg-neutral-950 p-4 rounded-xl shadow-sm text-left border border-neutral-100 dark:border-neutral-900">
           <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Fitting Status</span>
           <span className={`text-sm font-extrabold uppercase mt-1 inline-block ${
@@ -491,20 +514,20 @@ print("PyTorch model ready for scaling!")
             {currentEpoch} <span className="text-xs text-neutral-400 font-normal font-sans">/ {resumeFromCheckpoint && lastCheckpoint ? lastCheckpoint.epoch + maxEpochs : maxEpochs}</span>
           </span>
         </div>
-        <div className="bg-white dark:bg-neutral-950 p-4 rounded-xl shadow-sm text-left border border-neutral-100 dark:border-neutral-900">
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Current Loss</span>
-          <span className="text-sm font-mono font-extrabold text-red-500 mt-1 inline-block">
-            {metricsHistory.length > 0 ? metricsHistory[metricsHistory.length - 1].loss.toFixed(4) : '—'}
-          </span>
-        </div>
-        <div className="bg-white dark:bg-neutral-950 p-4 rounded-xl shadow-sm text-left border border-neutral-100 dark:border-neutral-900">
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">Current Accuracy</span>
-          <span className="text-sm font-mono font-extrabold text-royalblue-500 mt-1 inline-block">
-            {metricsHistory.length > 0 && metricsHistory[metricsHistory.length - 1].accuracy !== undefined 
-              ? metricsHistory[metricsHistory.length - 1].accuracy!.toFixed(4) 
-              : '—'}
-          </span>
-        </div>
+        {activeConfig.training.metrics.map(m => {
+          const latest = metricsHistory.length > 0 ? metricsHistory[metricsHistory.length - 1] : null;
+          const val = latest ? (latest as any)[m.id] : null;
+          return (
+            <div key={m.id} className="bg-white dark:bg-neutral-950 p-4 rounded-xl shadow-sm text-left border border-neutral-100 dark:border-neutral-900">
+              <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider block">{m.label}</span>
+              <span className={`text-sm font-mono font-extrabold mt-1 inline-block ${m.color}`}>
+                {val !== null && val !== undefined
+                  ? val.toFixed(m.id === 'perplexity' || m.id === 'tokens_per_sec' || m.id === 'fid' ? 2 : 4)
+                  : '—'}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Grid of Workload Settings & Telemetry */}
@@ -709,40 +732,32 @@ print("PyTorch model ready for scaling!")
               <div className="flex flex-wrap items-center gap-3 sm:gap-4 px-4 sm:px-6 pt-5 pb-3 border-b border-neutral-50 dark:border-neutral-900">
                 <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">Metrics Trace</span>
                 <div className="flex items-center gap-3 text-[10px] font-mono text-neutral-400">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-0.5 bg-royalblue-500 rounded-full inline-block" />
-                    Accuracy
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-0.5 bg-red-400 rounded-full inline-block" />
-                    Loss
-                  </span>
-                  {metricsHistory.some(m => m.valLoss) && (
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-0.5 bg-orange-400 rounded-full inline-block" />
-                      Val Loss
+                  {activeConfig.training.metrics.map(m => (
+                    <span key={m.id} className="flex items-center gap-1.5">
+                      <span className="w-3 h-0.5 rounded-full inline-block" style={{ backgroundColor: getStrokeColor(m.color) }} />
+                      {m.label}
                     </span>
-                  )}
+                  ))}
                 </div>
               </div>
 
               {/* Chart SVG wrapper */}
               <div className="relative bg-neutral-950 px-2 pb-2 mx-4 mt-4 rounded-xl overflow-hidden">
                 <svg width="0" height="0" className="absolute">
-                  <defs>
-                    <linearGradient id="grad-acc" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#4169e1" stopOpacity="0.3" />
-                      <stop offset="100%" stopColor="#4169e1" stopOpacity="0.01" />
-                    </linearGradient>
-                    <linearGradient id="grad-loss" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#f87171" stopOpacity="0.2" />
-                      <stop offset="100%" stopColor="#f87171" stopOpacity="0.01" />
-                    </linearGradient>
-                    <filter id="glow-blue">
-                      <feGaussianBlur stdDeviation="2.5" result="blur" />
-                      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                    </filter>
-                  </defs>
+                   <defs>
+                     <linearGradient id="grad-acc" x1="0" y1="0" x2="0" y2="1">
+                       <stop offset="0%" stopColor="#4169e1" stopOpacity="0.3" />
+                       <stop offset="100%" stopColor="#4169e1" stopOpacity="0.01" />
+                     </linearGradient>
+                     <linearGradient id="grad-loss" x1="0" y1="0" x2="0" y2="1">
+                       <stop offset="0%" stopColor="#f87171" stopOpacity="0.2" />
+                       <stop offset="100%" stopColor="#f87171" stopOpacity="0.01" />
+                     </linearGradient>
+                     <filter id="glow-blue">
+                       <feGaussianBlur stdDeviation="2.5" result="blur" />
+                       <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                     </filter>
+                   </defs>
                 </svg>
 
                 {metricsHistory.length > 0 ? (
@@ -765,26 +780,51 @@ print("PyTorch model ready for scaling!")
 
                     {/* BAR CHART */}
                     {chartType === 'bar' && metricsHistory.map((m, i) => {
-                      const barW = Math.max(2, (plotW / n) * 0.4);
-                      const accH = (m.accuracy || 0) * plotH;
-                      const lossH = (m.loss / maxLoss) * plotH;
+                      const mainMetrics = activeConfig.training.metrics.filter(met => met.isMain || met.id === 'loss');
+                      const barW = Math.max(1.5, (plotW / n) / (mainMetrics.length + 1));
                       const x = PL + i * stepX;
                       return (
                         <g key={i}>
-                          <rect x={x - barW - 1} y={H - PB - accH} width={barW} height={accH} fill="#4169e1" opacity="0.85" rx="1.5" />
-                          <rect x={x + 1} y={H - PB - lossH} width={barW} height={lossH} fill="#f87171" opacity="0.75" rx="1.5" />
+                          {mainMetrics.map((met, idx) => {
+                            const val = (m as any)[met.id] !== undefined ? ((m as any)[met.id] as number) : 0;
+                            const maxVal = Math.max(...metricsHistory.map(h => ((h as any)[met.id] as number) || 0), 1.0);
+                            const valH = maxVal > 0 ? (val / maxVal) * plotH : 0;
+                            const offset = (idx - mainMetrics.length / 2) * (barW + 1);
+                            return (
+                              <rect
+                                key={met.id}
+                                x={x + offset}
+                                y={H - PB - valH}
+                                width={barW}
+                                height={valH}
+                                fill={getStrokeColor(met.color)}
+                                opacity="0.8"
+                                rx="1"
+                              />
+                            );
+                          })}
                         </g>
                       );
                     })}
 
                     {/* SCATTER CHART */}
                     {chartType === 'scatter' && metricsHistory.map((m, i) => {
-                      const { x: ax, y: ay } = getXY(i, 'accuracy');
-                      const { x: lx, y: ly } = getXY(i, 'loss');
+                      const mainMetrics = activeConfig.training.metrics.filter(met => met.isMain || met.id === 'loss');
                       return (
                         <g key={i}>
-                          <circle cx={ax} cy={ay} r="4.5" fill="#4169e1" opacity="0.85" filter="url(#glow-blue)" />
-                          <circle cx={lx} cy={ly} r="3.5" fill="#f87171" opacity="0.8" />
+                          {mainMetrics.map(met => {
+                            const { x, y } = getXY(i, met.id);
+                            return (
+                              <circle
+                                key={met.id}
+                                cx={x}
+                                cy={y}
+                                r={met.isMain ? "4" : "3"}
+                                fill={getStrokeColor(met.color)}
+                                opacity="0.8"
+                              />
+                            );
+                          })}
                         </g>
                       );
                     })}
@@ -792,61 +832,60 @@ print("PyTorch model ready for scaling!")
                     {/* AREA CHART */}
                     {chartType === 'area' && (
                       <>
-                        <path d={areaPath('loss')} fill="url(#grad-loss)" />
-                        <path d={areaPath('accuracy')} fill="url(#grad-acc)" />
-                        <polyline points={polyPoints('loss')} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
-                        <polyline points={polyPoints('accuracy')} fill="none" stroke="#4169e1" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" filter="url(#glow-blue)" />
+                        {activeConfig.training.metrics.filter(met => met.isMain || met.id === 'loss').map(met => (
+                          <g key={met.id}>
+                            <path d={areaPath(met.id)} fill={met.id === 'loss' || met.id === 'g_loss' ? "url(#grad-loss)" : "url(#grad-acc)"} />
+                            <polyline points={polyPoints(met.id)} fill="none" stroke={getStrokeColor(met.color)} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
+                          </g>
+                        ))}
                       </>
                     )}
 
                     {/* LINE CHART */}
                     {chartType === 'line' && (
                       <>
-                        <polyline points={polyPoints('loss')} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.8" />
-                        <polyline points={polyPoints('accuracy')} fill="none" stroke="#4169e1" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" filter="url(#glow-blue)" />
+                        {activeConfig.training.metrics.filter(met => met.isMain || met.id === 'loss').map(met => (
+                          <polyline
+                            key={met.id}
+                            points={polyPoints(met.id)}
+                            fill="none"
+                            stroke={getStrokeColor(met.color)}
+                            strokeWidth={met.isMain ? "2" : "1.2"}
+                            strokeLinejoin="round"
+                            strokeLinecap="round"
+                            opacity="0.9"
+                          />
+                        ))}
                       </>
                     )}
 
                     {/* SMOOTH CHART */}
                     {chartType === 'smooth' && (
                       <>
-                        <path d={areaPath('loss', true)} fill="url(#grad-loss)" />
-                        <path d={areaPath('accuracy', true)} fill="url(#grad-acc)" />
-                        <path d={smoothPath('loss')} fill="none" stroke="#f87171" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-                        <path d={smoothPath('accuracy')} fill="none" stroke="#4169e1" strokeWidth="2.5" strokeLinecap="round" filter="url(#glow-blue)" />
+                        {activeConfig.training.metrics.filter(met => met.isMain || met.id === 'loss').map(met => (
+                          <g key={met.id}>
+                            <path d={areaPath(met.id, true)} fill={met.id === 'loss' || met.id === 'g_loss' ? "url(#grad-loss)" : "url(#grad-acc)"} />
+                            <path d={smoothPath(met.id)} fill="none" stroke={getStrokeColor(met.color)} strokeWidth="2" strokeLinecap="round" opacity="0.9" />
+                          </g>
+                        ))}
                       </>
                     )}
 
-                    {/* Interactive dots */}
+                    {/* Interactive dots overlay */}
                     {(chartType === 'line' || chartType === 'area' || chartType === 'smooth') && metricsHistory.map((m, i) => {
-                      const { x: ax, y: ay } = getXY(i, 'accuracy');
+                      const mainMetric = activeConfig.training.metrics.find(met => met.isMain) || activeConfig.training.metrics[0];
+                      const { x, y } = getXY(i, mainMetric.id);
+                      const val = (m as any)[mainMetric.id] !== undefined ? ((m as any)[mainMetric.id] as number) : 0;
                       return (
                         <g key={i} className="group/dot">
-                          <circle cx={ax} cy={ay} r="3" fill="#4169e1" stroke="#0a0a0f" strokeWidth="1.5" className="cursor-pointer" />
-                          <rect x={ax - 22} y={ay - 22} width="44" height="14" rx="3" fill="#1e1e2e" opacity="0" className="group-hover/dot:opacity-100 transition-opacity" />
-                          <text x={ax} y={ay - 12} textAnchor="middle" fontSize="8.5" fill="#818cf8" fontFamily="monospace" fontWeight="bold" className="opacity-0 group-hover/dot:opacity-100 transition-opacity">
-                            {(m.accuracy || 0).toFixed(3)}
+                          <circle cx={x} cy={y} r="3" fill={getStrokeColor(mainMetric.color)} stroke="#0a0a0f" strokeWidth="1.5" className="cursor-pointer" />
+                          <rect x={x - 22} y={y - 22} width="44" height="14" rx="3" fill="#1e1e2e" opacity="0" className="group-hover/dot:opacity-100 transition-opacity" />
+                          <text x={x} y={y - 12} textAnchor="middle" fontSize="8.5" fill="#818cf8" fontFamily="monospace" fontWeight="bold" className="opacity-0 group-hover/dot:opacity-100 transition-opacity">
+                            {val.toFixed(2)}
                           </text>
                         </g>
                       );
                     })}
-
-                    {/* Val Loss line */}
-                    {chartType !== 'bar' && metricsHistory.some(m => m.valLoss) && (
-                      <polyline
-                        points={metricsHistory.map((m, i) => {
-                          const vl = (m.valLoss || 0) / maxLoss;
-                          const x = PL + i * stepX;
-                          const y = H - PB - vl * plotH;
-                          return `${x},${y}`;
-                        }).join(' ')}
-                        fill="none"
-                        stroke="#fb923c"
-                        strokeWidth="1.2"
-                        strokeDasharray="4 3"
-                        opacity="0.6"
-                      />
-                    )}
                   </svg>
                 ) : (
                   <div className="h-48 flex flex-col items-center justify-center gap-2">
@@ -862,20 +901,27 @@ print("PyTorch model ready for scaling!")
                   <div className="overflow-auto max-h-[160px] rounded-xl border border-neutral-100 dark:border-neutral-900 bg-neutral-50 dark:bg-neutral-900">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead className="sticky top-0 bg-neutral-50 dark:bg-neutral-900 z-10 border-b border-neutral-100 dark:border-neutral-900">
-                        <tr className="text-neutral-400 dark:text-neutral-505 uppercase tracking-wider font-semibold text-[9px] font-mono">
+                        <tr className="text-neutral-400 dark:text-neutral-550 uppercase tracking-wider font-semibold text-[9px] font-mono">
                           <th className="py-2.5 pl-4">Epoch</th>
-                          <th className="py-2.5 text-right text-red-500">Loss</th>
-                          <th className="py-2.5 text-right text-orange-500 pr-4">Val Loss</th>
-                          <th className="py-2.5 text-right pr-4 text-royalblue-500">Accuracy</th>
+                          {activeConfig.training.metrics.map(m => (
+                            <th key={m.id} className="py-2.5 text-right font-mono" style={{ color: getStrokeColor(m.color) }}>
+                              {m.label}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-neutral-100 dark:divide-neutral-900 font-mono">
                         {metricsHistory.map((m, idx) => (
                           <tr key={idx} className="hover:bg-neutral-100 dark:hover:bg-neutral-850/60 transition-colors">
-                            <td className="py-2 pl-4 font-sans text-neutral-500 dark:text-neutral-400 text-[11px]">Ep {m.epoch}</td>
-                            <td className="py-2 text-right text-red-500 dark:text-red-400 text-[11px]">{(m.loss || 0).toFixed(4)}</td>
-                            <td className="py-2 text-right text-orange-500 dark:text-orange-400 pr-4 text-[11px]">{(m.valLoss || 0).toFixed(4)}</td>
-                            <td className="py-2 text-right pr-4 text-royalblue-500 font-bold text-[11px]">{(m.accuracy || 0).toFixed(4)}</td>
+                            <td className="py-2 pl-4 font-sans text-neutral-500 dark:text-neutral-400 text-[11px]">Ep {(m as any).epoch}</td>
+                            {activeConfig.training.metrics.map(met => {
+                              const val = (m as any)[met.id];
+                              return (
+                                <td key={met.id} className="py-2 text-right text-[11px]" style={{ color: getStrokeColor(met.color) }}>
+                                  {val !== undefined ? val.toFixed(4) : '—'}
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))}
                       </tbody>
