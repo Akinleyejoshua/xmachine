@@ -1,8 +1,6 @@
-"use client";
-
 import React, { useState } from 'react';
 import { usePipelineStore } from '../../store/usePipelineStore';
-import { useDomain } from '@/context/DomainContext';
+import { TransformAction } from '../../types/pipeline';
 import { 
   Upload, 
   FolderPlus,
@@ -209,7 +207,7 @@ export const ETLCanvas: React.FC = () => {
 
   const handleAddAction = () => {
     if (!selectedActionType) return;
-    const newAction: any = {
+    const newAction: TransformAction = {
       id: Math.random().toString(36).substring(7),
       type: selectedActionType as any,
       params: selectedActionType === 'resize' ? { width: 224, height: 224 }
