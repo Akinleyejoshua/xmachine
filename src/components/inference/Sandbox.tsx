@@ -83,7 +83,7 @@ export const Sandbox: React.FC = () => {
         },
         body: JSON.stringify({
           prompt: inputVal,
-          projectId: currentProject._id,
+          projectId: currentProject.id,
           domain: currentProject.domain,
         }),
       });
