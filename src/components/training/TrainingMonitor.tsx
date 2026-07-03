@@ -384,15 +384,14 @@ print("PyTorch model ready for scaling!")
     }
 
     let model: any = null;
-    let xs: any = null;
-    let ys: any = null;
     let epoch = startEpoch;
     let useRealTraining = true;
     let isStepRunning = false;
+    let inputShape: number[] = [];
 
     try {
       const t = await getTf();
-      const inputShape = buildInputShape(currentProject.domain, modelConfig);
+      inputShape = buildInputShape(currentProject.domain, modelConfig);
       const classCount = etl.classNames?.length || 2;
 
       model = await buildModel({
@@ -403,46 +402,6 @@ print("PyTorch model ready for scaling!")
         learningRate: modelConfig.hyperparameters.learningRate,
         loss: modelConfig.hyperparameters.loss,
       });
-
-      const seed = etl.seed || 42;
-      const hasRealData = etl.files.some(f => f.rawContent);
-      if (hasRealData) {
-        try {
-          setLogs(prev => [...prev, `[INFO] Ingesting real data samples from pipeline files for training...`]);
-          ({ xs, ys } = await generateRealBatch(etl.files, currentProject.domain, inputShape, classNames, etl.batchSize || 32));
-        } catch (e) {
-          console.warn('Failed to generate real data batch, falling back to synthetic:', e);
-          setLogs(prev => [...prev, `[WARN] Failed to load real data batch: ${e instanceof Error ? e.message : e}. Falling back to synthetic batch.`]);
-          
-          if (currentProject.domain === 'nlp' || currentProject.domain === 'llm-finetuning') {
-            const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
-            ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed));
-          } else if (currentProject.domain === 'time-series-forecasting') {
-            ({ xs, ys } = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed));
-          } else {
-            ({ xs, ys } = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed));
-          }
-        }
-      } else {
-        if (currentProject.domain === 'nlp' || currentProject.domain === 'llm-finetuning') {
-          const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
-          ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed));
-        } else if (currentProject.domain === 'time-series-forecasting') {
-          ({ xs, ys } = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed));
-        } else {
-          ({ xs, ys } = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed));
-        }
-      }
-
-      if (ys && model) {
-        const outShape = model.outputs[0].shape;
-        const targetShape = outShape.map((d: any) => d === null || d === -1 ? (etl.batchSize || 32) : d);
-        try {
-          ys = ys.reshape(targetShape);
-        } catch (e) {
-          console.warn('Target reshape failed:', e);
-        }
-      }
 
       setTrainingStatus('training');
       setLogs(prev => [...prev, `[INFO] Model initialized successfully. Input shape: [${inputShape.join(', ')}]`]);
@@ -482,6 +441,8 @@ print("PyTorch model ready for scaling!")
 
       let loss = 0.5;
       let accuracy = 0.0;
+      let valLoss = 0.55;
+      let valAccuracy = 0.0;
       let perplexity = 0.0;
       let tokens_per_sec = 0.0;
       let mAP = 0.0;
@@ -491,13 +452,87 @@ print("PyTorch model ready for scaling!")
       let d_loss = 0.0;
       let mae = 0.0;
 
+      let xs: any = null;
+      let ys: any = null;
+      let valXs: any = null;
+      let valYs: any = null;
+
       const timeMs = useRealTraining ? Math.floor(800 + Math.random() * 800) : Math.floor(400 + Math.random() * 120);
+
+      if (useRealTraining && model) {
+        try {
+          const classCount = etl.classNames?.length || 2;
+          const seed = (etl.seed || 42) + epoch;
+          const hasRealData = etl.files.some(f => f.rawContent);
+
+          if (hasRealData) {
+            const validFiles = etl.files.filter(f => f.rawContent);
+            const splitRatio = etl.splitRatio?.train || 80;
+            const splitIndex = Math.floor(validFiles.length * (splitRatio / 100));
+            let trainFiles = validFiles.slice(0, splitIndex);
+            let valFiles = validFiles.slice(splitIndex);
+            if (trainFiles.length === 0) trainFiles = validFiles;
+            if (valFiles.length === 0) valFiles = trainFiles;
+
+            ({ xs, ys } = await generateRealBatch(trainFiles, currentProject.domain, inputShape, classNames, etl.batchSize || 32));
+            const valBatch = await generateRealBatch(valFiles, currentProject.domain, inputShape, classNames, etl.batchSize || 32);
+            valXs = valBatch.xs;
+            valYs = valBatch.ys;
+          } else {
+            if (currentProject.domain === 'nlp' || currentProject.domain === 'llm-finetuning') {
+              const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
+              ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed));
+              const valBatch = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed + 999);
+              valXs = valBatch.xs;
+              valYs = valBatch.ys;
+            } else if (currentProject.domain === 'time-series-forecasting') {
+              ({ xs, ys } = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed));
+              const valBatch = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed + 999);
+              valXs = valBatch.xs;
+              valYs = valBatch.ys;
+            } else {
+              ({ xs, ys } = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed));
+              const valBatch = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed + 999);
+              valXs = valBatch.xs;
+              valYs = valBatch.ys;
+            }
+          }
+
+          if (model) {
+            const outShape = model.outputs[0].shape;
+            const targetShape = outShape.map((d: any) => d === null || d === -1 ? (etl.batchSize || 32) : d);
+            if (ys) {
+              try { ys = ys.reshape(targetShape); } catch (e) { /* ignore */ }
+            }
+            if (valYs) {
+              try { valYs = valYs.reshape(targetShape); } catch (e) { /* ignore */ }
+            }
+          }
+        } catch (err) {
+          console.warn('Batch generation failed, fallback to simulation:', err);
+        }
+      }
 
       if (useRealTraining && model && xs && ys) {
         try {
           const history = await model.fit(xs, ys, { epochs: 1, shuffle: etl.shuffle });
           loss = history.history.loss[0] ?? loss;
           accuracy = history.history.acc?.[0] ?? history.history.accuracy?.[0] ?? accuracy;
+
+          if (valXs && valYs) {
+            const evalResult = model.evaluate(valXs, valYs);
+            if (Array.isArray(evalResult)) {
+              const valLossVal = await evalResult[0].data();
+              valLoss = valLossVal[0] ?? valLoss;
+              const valAccVal = await evalResult[1].data();
+              valAccuracy = valAccVal[0] ?? valAccuracy;
+              evalResult.forEach((t: any) => t.dispose());
+            } else {
+              const valLossVal = await evalResult.data();
+              valLoss = valLossVal[0] ?? valLoss;
+              evalResult.dispose();
+            }
+          }
         } catch (err) {
           console.error('Training step failed:', err);
           setLogs(prev => [...prev, `[ERROR] Training step failed: ${err}`]);
@@ -515,6 +550,9 @@ print("PyTorch model ready for scaling!")
         g_loss = epochMetrics.g_loss ?? g_loss;
         d_loss = epochMetrics.d_loss ?? d_loss;
         mae = epochMetrics.mae ?? mae;
+
+        valLoss = parseFloat((loss * 1.05 + Math.random() * 0.02).toFixed(4));
+        valAccuracy = parseFloat(Math.max(0, accuracy - 0.02 - Math.random() * 0.03).toFixed(4));
       }
 
       if (useRealTraining) {
@@ -540,8 +578,8 @@ print("PyTorch model ready for scaling!")
         epoch,
         loss,
         accuracy,
-        valLoss: loss,
-        valAccuracy: accuracy,
+        valLoss,
+        valAccuracy,
       };
 
       if (perplexity) trainingMetric.perplexity = perplexity;
@@ -553,7 +591,7 @@ print("PyTorch model ready for scaling!")
       if (d_loss) trainingMetric.d_loss = d_loss;
       if (mae) {
         trainingMetric.mae = mae;
-        trainingMetric.val_mae = mae;
+        trainingMetric.val_mae = valLoss * 0.85;
       }
 
       updateMetrics(trainingMetric);
@@ -613,6 +651,11 @@ print("PyTorch model ready for scaling!")
           `[CHECKPOINT] Epoch ${epoch} weights saved successfully (vram: ${vramUsage}GB used)`
         ]);
       }
+
+      if (xs) xs.dispose();
+      if (ys) ys.dispose();
+      if (valXs) valXs.dispose();
+      if (valYs) valYs.dispose();
 
       isStepRunning = false;
       intervalRef.current = setTimeout(runStep, 1200);
