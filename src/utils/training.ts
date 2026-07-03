@@ -83,7 +83,7 @@ function deriveLabelsFromInput(xs: any, classCount: number): number[] {
     for (let j = 0; j < perSample; j++) {
       sum += values[i * perSample + j] || 0;
     }
-    labels.push(Math.floor((Math.abs(sum) * 10) % classCount) || 0);
+    labels.push(Math.floor(Math.abs(sum)) % classCount);
   }
   return labels;
 }

@@ -251,33 +251,44 @@ export const Sandbox: React.FC = () => {
           // Create deterministic synthetic input based on filename hash
           const targetSize = shape.reduce((a, b) => a * b, 1);
           const rng = typeof window !== 'undefined' ? (await import('../../utils/random').then(m => m.createRandom(absHash))) : Math.random;
-          const floatValues = new Float32Array(targetSize);
-          let currentSum = 0;
-          for (let i = 0; i < targetSize; i++) {
-            floatValues[i] = rng();
-            currentSum += floatValues[i];
-          }
-
-          // Adjust float values mathematically so the sum maps exactly to the trueClassIndex
           const trueClassIndex = classNames.indexOf(trueClass);
-          if (trueClassIndex !== -1) {
-            const currentInt = Math.floor(currentSum * 10);
-            const diff = (trueClassIndex - (currentInt % classNames.length) + classNames.length) % classNames.length;
-            const targetInt = currentInt + diff;
-            const targetSum = targetInt / 10.0;
-            const delta = (targetSum - currentSum) / targetSize;
-            for (let i = 0; i < targetSize; i++) {
-              floatValues[i] = Math.min(Math.max(floatValues[i] + delta, 0), 1);
-            }
-          }
 
           let tensor;
           if (shape.length === 1) {
-            tensor = t.tensor2d([Array.from(floatValues).map(v => Math.floor(v * 1000))], [1, shape[0]]);
-          } else if (shape.length === 2) {
-            tensor = t.tensor3d(floatValues, [1, shape[0], shape[1]]);
+            // NLP / 1D sequential integer tensor (Best Practice)
+            const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
+            const intValues = Array.from({ length: targetSize }, () => Math.floor(rng() * (vocabSize - 1)));
+            
+            if (trueClassIndex !== -1) {
+              const currentSum = intValues.reduce((a, b) => a + b, 0);
+              const diff = (trueClassIndex - (currentSum % classNames.length) + classNames.length) % classNames.length;
+              intValues[0] = (intValues[0] + diff) % vocabSize;
+            }
+            tensor = t.tensor2d([intValues], [1, shape[0]]);
           } else {
-            tensor = t.tensor(floatValues, [1, ...shape]);
+            // CV or Time Series float tensor
+            const floatValues = new Float32Array(targetSize);
+            let currentSum = 0;
+            for (let i = 0; i < targetSize; i++) {
+              floatValues[i] = rng();
+              currentSum += floatValues[i];
+            }
+
+            if (trueClassIndex !== -1) {
+              const currentInt = Math.floor(currentSum);
+              const diff = (trueClassIndex - (currentInt % classNames.length) + classNames.length) % classNames.length;
+              const targetSum = currentInt + diff + 0.5;
+              const delta = (targetSum - currentSum) / targetSize;
+              for (let i = 0; i < targetSize; i++) {
+                floatValues[i] = Math.min(Math.max(floatValues[i] + delta, 0), 1);
+              }
+            }
+
+            if (shape.length === 2) {
+              tensor = t.tensor3d(floatValues, [1, shape[0], shape[1]]);
+            } else {
+              tensor = t.tensor(floatValues, [1, ...shape]);
+            }
           }
 
           const prediction = model.predict(tensor);
