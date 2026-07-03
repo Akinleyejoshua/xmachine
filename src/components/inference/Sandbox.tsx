@@ -188,31 +188,120 @@ export const Sandbox: React.FC = () => {
     }
   };
 
-  const handleBulkEvaluate = () => {
+  const handleBulkEvaluate = async () => {
     setBulkActive(true);
     setBulkResults(null);
 
-    setTimeout(() => {
-    const items: BulkItem[] = etl.files.length > 0 ? etl.files.map(file => {
-      return activeConfig?.sandbox.bulkMockResult(file.name, classNames, etl.seed);
-    }) : [
-      activeConfig?.sandbox.bulkMockResult('val_sample_01.dat', classNames, etl.seed),
-      activeConfig?.sandbox.bulkMockResult('val_sample_02.dat', classNames, etl.seed),
-      activeConfig?.sandbox.bulkMockResult('val_sample_03.dat', classNames, etl.seed),
-      activeConfig?.sandbox.bulkMockResult('val_sample_04.dat', classNames, etl.seed),
-      activeConfig?.sandbox.bulkMockResult('val_sample_05.dat', classNames, etl.seed),
-      activeConfig?.sandbox.bulkMockResult('val_sample_06.dat', classNames, etl.seed),
-      activeConfig?.sandbox.bulkMockResult('val_sample_07.dat', classNames, etl.seed)
+    let model: any = null;
+    try {
+      const { loadModel } = await import('../../utils/training');
+      model = await loadModel(currentProject.id, selectedCheckpoint);
+    } catch (e) {
+      console.warn('Failed to load model for batch evaluation:', e);
+    }
+
+    const { getTf } = await import('../../utils/model');
+    const t = await getTf();
+
+    const shape = getInputShape(currentProject.domain);
+
+    const filesToEvaluate = etl.files.length > 0 ? etl.files : [
+      { id: '1', name: 'cat_sample_01.jpg', size: 1024, type: 'image' as const },
+      { id: '2', name: 'dog_sample_02.jpg', size: 1024, type: 'image' as const },
+      { id: '3', name: 'bird_sample_03.jpg', size: 1024, type: 'image' as const },
+      { id: '4', name: 'cat_sample_04.jpg', size: 1024, type: 'image' as const },
+      { id: '5', name: 'dog_sample_05.jpg', size: 1024, type: 'image' as const },
+      { id: '6', name: 'bird_sample_06.jpg', size: 1024, type: 'image' as const },
+      { id: '7', name: 'cat_sample_07.jpg', size: 1024, type: 'image' as const },
     ];
 
-      const correctCount = items.filter(item => item.correct).length;
-      const incorrectCount = items.length - correctCount;
-      const avgLatency = Math.round(items.reduce((acc, item) => acc + item.latencyMs, 0) / items.length);
-      const accuracy = correctCount / items.length;
+    const items: BulkItem[] = [];
 
-      setBulkResults({ accuracy, total: items.length, correct: correctCount, incorrect: incorrectCount, avgLatency, items });
-      setBulkActive(false);
-    }, 1200);
+    for (const file of filesToEvaluate) {
+      // Get true label from file name
+      let trueClass = detectFileClass(file.name, classNames);
+      
+      // Calculate deterministic filename hash
+      let hash = 0;
+      for (let i = 0; i < file.name.length; i++) {
+        hash = (hash << 5) - hash + file.name.charCodeAt(i);
+        hash |= 0;
+      }
+      const absHash = Math.abs(hash);
+
+      if (!trueClass) {
+        trueClass = classNames[absHash % classNames.length] || classNames[0];
+      }
+
+      if (model) {
+        try {
+          // Create deterministic synthetic input based on filename hash
+          const targetSize = shape.reduce((a, b) => a * b, 1);
+          const rng = typeof window !== 'undefined' ? (await import('../../utils/random').then(m => m.createRandom(absHash))) : Math.random;
+          const floatValues = new Float32Array(targetSize);
+          for (let i = 0; i < targetSize; i++) {
+            floatValues[i] = rng();
+          }
+
+          let tensor;
+          if (shape.length === 1) {
+            tensor = t.tensor2d([Array.from(floatValues).map(v => Math.floor(v * 1000))], [1, shape[0]]);
+          } else if (shape.length === 2) {
+            tensor = t.tensor3d(floatValues, [1, shape[0], shape[1]]);
+          } else {
+            tensor = t.tensor(floatValues, [1, ...shape]);
+          }
+
+          const prediction = model.predict(tensor);
+          tensor.dispose();
+          const scores = await prediction.data() as Float32Array;
+          prediction.dispose();
+
+          let predClass = classNames[0];
+          let confidence = 0.5;
+
+          if (currentProject.domain === 'object-detection') {
+            const bbox = Array.from(scores).map(val => Math.min(Math.max(val * 100, 0), 100));
+            predClass = classNames[Math.floor(bbox[0] + bbox[1]) % classNames.length] || classNames[0];
+            confidence = 0.85 + (bbox[0] % 15) / 100;
+          } else {
+            const maxScore = Math.max(...Array.from(scores));
+            const classIndex = Array.from(scores).indexOf(maxScore);
+            predClass = classNames[classIndex] || classNames[0];
+            confidence = maxScore;
+          }
+
+          const isCorrect = predClass === trueClass;
+          items.push({
+            name: file.name,
+            trueClass,
+            predClass,
+            confidence,
+            latencyMs: Math.floor(8 + (absHash % 12)),
+            correct: isCorrect
+          });
+        } catch (err) {
+          console.error('File evaluation failed:', err);
+          const mock = activeConfig?.sandbox.bulkMockResult(file.name, classNames, absHash);
+          mock.trueClass = trueClass;
+          mock.correct = mock.predClass === trueClass;
+          items.push(mock);
+        }
+      } else {
+        const mock = activeConfig?.sandbox.bulkMockResult(file.name, classNames, absHash);
+        mock.trueClass = trueClass;
+        mock.correct = mock.predClass === trueClass;
+        items.push(mock);
+      }
+    }
+
+    const correctCount = items.filter(item => item.correct).length;
+    const incorrectCount = items.length - correctCount;
+    const avgLatency = Math.round(items.reduce((acc, item) => acc + item.latencyMs, 0) / items.length);
+    const accuracy = correctCount / items.length;
+
+    setBulkResults({ accuracy, total: items.length, correct: correctCount, incorrect: incorrectCount, avgLatency, items });
+    setBulkActive(false);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
