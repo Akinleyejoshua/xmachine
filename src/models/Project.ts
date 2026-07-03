@@ -68,18 +68,13 @@ const ProjectSchema: Schema = new Schema(
         epochs: { type: Number, default: 10 }
       }
     },
-    metricsHistory: [{
-      epoch: Number,
-      loss: Number,
-      accuracy: Number,
-      valLoss: Number,
-      valAccuracy: Number
-    }],
+    metricsHistory: [Schema.Types.Mixed],
     checkpoints: [{
       epoch: Number,
       timestamp: String,
       fileSize: Number,
-      checkpointUrl: String
+      checkpointUrl: String,
+      modelArtifact: Schema.Types.Mixed
     }],
     modelArtifact: {
       epoch: Number,

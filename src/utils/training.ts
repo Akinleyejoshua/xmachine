@@ -91,12 +91,55 @@ export async function saveModel(model: any, projectId: string): Promise<void> {
   }
 }
 
-export async function loadModel(projectId: string): Promise<any> {
+export async function loadModel(projectId: string, epoch?: number | 'latest'): Promise<any> {
   const t = await getTf();
+  
+  if (typeof window !== 'undefined' && (!epoch || epoch === 'latest')) {
+    try {
+      const model = await t.loadLayersModel(`indexeddb://xmachine-model-${projectId}`);
+      if (model) return model;
+    } catch (e) {
+      // ignore
+    }
+  }
+
   try {
-    const model = await t.loadLayersModel(`indexeddb://xmachine-model-${projectId}`);
+    let project = null;
+    if (typeof window === 'undefined') {
+      const { dbConnect } = await import('./db');
+      const StudioWorkspaceProject = await import('../models/Project').then(m => m.default);
+      await dbConnect();
+      project = await StudioWorkspaceProject.findById(projectId);
+    } else {
+      const res = await fetch(`/api/projects?id=${projectId}`);
+      const json = await res.json();
+      project = json?.data;
+    }
+
+    if (!project) return null;
+
+    let artifact = null;
+    if (epoch && epoch !== 'latest') {
+      const checkpoint = project.checkpoints?.find((cp: any) => cp.epoch === Number(epoch));
+      artifact = checkpoint?.modelArtifact;
+    } else {
+      artifact = project.modelArtifact;
+    }
+
+    if (!artifact?.topology || !artifact?.weightData) {
+      return null;
+    }
+
+    const model = await t.loadLayersModel(
+      t.io.fromMemory({
+        modelTopology: artifact.topology,
+        weightSpecs: Array.isArray(artifact.weightSpecs) ? artifact.weightSpecs : [],
+        weightData: artifact.weightData,
+      })
+    );
     return model;
-  } catch (e) {
+  } catch (error) {
+    console.warn('Failed to load model:', error);
     return null;
   }
 }

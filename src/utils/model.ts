@@ -24,9 +24,14 @@ export async function buildModel(options: BuildModelOptions): Promise<any> {
   const model = t.sequential();
 
   if (inputShape && inputShape.length > 0) {
-    model.add(t.layers.input({ inputShape: inputShape[0] === -1 ? inputShape.slice(1) : inputShape, batchSize: inputShape[0] === -1 ? undefined : undefined }));
+    model.add(t.layers.input({ inputShape: inputShape[0] === -1 ? inputShape.slice(1) : inputShape }));
   } else if (modelLayers.length > 0 && modelLayers[0].config.inputShape) {
     model.add(t.layers.input({ inputShape: modelLayers[0].config.inputShape }));
+  }
+
+  if (inputShape && inputShape.length === 1 && inputShape[0] === 100 && modelLayers[0]?.type === 'dense') {
+    model.add(t.layers.embedding({ inputDim: 32000, outputDim: 64, inputLength: 100 }));
+    model.add(t.layers.flatten({}));
   }
 
   for (const layer of modelLayers) {

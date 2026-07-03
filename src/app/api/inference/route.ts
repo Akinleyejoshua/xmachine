@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { generateLocalResponse } from '../../../utils/inference';
+import { runServerInference } from '../../../utils/inference';
 import { DOMAIN_CONFIGS } from '../../../config/domain/registry';
 import { dbConnect } from '../../../utils/db';
 import StudioWorkspaceProject from '../../../models/Project';
 
 export async function POST(request: Request) {
   try {
-    const { prompt, projectId, domain } = await request.json();
+    const { prompt, projectId, domain, epoch } = await request.json();
     if (!prompt) {
       return NextResponse.json({ success: false, error: 'Prompt is required' }, { status: 400 });
     }
@@ -30,25 +30,33 @@ export async function POST(request: Request) {
       ? project.etl.classNames
       : (domainConfig?.pipeline?.defaultClassNames || []);
 
-    // Handle LLM domain specifically with local inference
+    // Try running real server-side model inference first
+    try {
+      const realResult = await runServerInference(prompt, projectId, domain, classNames, epoch);
+      if (realResult) {
+        return NextResponse.json({ success: true, data: realResult });
+      }
+    } catch (err) {
+      console.warn('Real server inference execution failed:', err);
+    }
+
+    // Handle LLM domain fallback specifically
     if (domain === 'llm-finetuning') {
       const start = Date.now();
-      const generatedText = await generateLocalResponse(prompt, projectId);
       const latencyMs = Date.now() - start;
-      const tokens = Math.ceil(generatedText.split(/\s+/).length * 1.3);
-      const perplexity = parseFloat((3.0 + Math.random() * 2.0).toFixed(2));
+      const text = "No trained LLM model checkpoint is available yet. Complete training first, then run inference.";
       return NextResponse.json({
         success: true,
         data: {
-          text: generatedText,
-          perplexity,
+          text,
+          perplexity: 0.0,
           latencyMs: latencyMs > 0 ? latencyMs : 25,
-          tokens
+          tokens: 0
         }
       });
     }
 
-    // Handle other domains using registry mock results
+    // Handle other domains fallback using registry mock results
     if (domainConfig?.sandbox?.defaultMockResult) {
       const result = domainConfig.sandbox.defaultMockResult(prompt, classNames, project?.etl?.seed);
       return NextResponse.json({ success: true, data: result });

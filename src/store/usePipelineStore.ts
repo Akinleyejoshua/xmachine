@@ -384,11 +384,11 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
 
       setCurrentEpoch: (epoch) => set({ currentEpoch: epoch }),
 
-      addCheckpoint: async (checkpoint) => {
+      addCheckpoint: async (checkpoint, modelArtifact) => {
         const currentProject = usePipelineStore.getState().currentProject;
         if (currentProject) {
           try {
-            await fetch('/api/checkpoints', {
+            const response = await fetch('/api/checkpoints', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -397,10 +397,17 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
                 projectId: currentProject.id,
                 epoch: checkpoint.epoch,
                 fileSize: checkpoint.fileSize,
+                modelArtifact,
               }),
             });
-            // Auto save metrics history and parameters to DB
-            await usePipelineStore.getState().saveProjectProgress();
+            const data = await response.json();
+            if (data.success && data.data) {
+              set((state) => ({
+                checkpoints: [...state.checkpoints, data.data],
+              }));
+              await usePipelineStore.getState().saveProjectProgress();
+              return;
+            }
           } catch (err) {
             console.error('Failed to sync checkpoint to db:', err);
           }

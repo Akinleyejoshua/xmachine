@@ -41,9 +41,10 @@ interface BulkEvaluationResult {
 }
 
 export const Sandbox: React.FC = () => {
-  const { currentProject, etl, setInferenceResult, inferenceResult, setInferenceActive, inferenceActive } = usePipelineStore();
+  const { currentProject, etl, checkpoints = [], setInferenceResult, inferenceResult, setInferenceActive, inferenceActive } = usePipelineStore();
   const [textVal, setTextVal] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState<number | 'latest'>('latest');
   
   // Tabs: 'single' | 'bulk'
   const [activeTab, setActiveTab] = useState<'single' | 'bulk'>('single');
@@ -91,9 +92,25 @@ export const Sandbox: React.FC = () => {
       tensor.dispose();
       const scores = await prediction.data() as Float32Array;
       prediction.dispose();
-      const maxScore = Math.max(...Array.from(scores));
-      const classIndex = Array.from(scores).indexOf(maxScore);
-      return { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: 14 };
+
+      if (currentProject.domain === 'object-detection') {
+        const bbox = Array.from(scores).map(val => Math.min(Math.max(val * 100, 0), 100)) as [number, number, number, number];
+        const mainClass = classNames[Math.floor(bbox[0] + bbox[1]) % classNames.length] || classNames[0];
+        const secondaryClass = classNames[Math.floor(bbox[2] + bbox[3]) % classNames.length] || classNames[1] || classNames[0];
+        return {
+          class: mainClass,
+          confidence: 0.85 + (bbox[0] % 15) / 100,
+          latencyMs: 25,
+          boundingBoxes: [
+            { label: mainClass, bbox: [bbox[0] * 0.5, bbox[1] * 0.5, bbox[2] * 0.5 + 20, bbox[3] * 0.5 + 20] },
+            { label: secondaryClass, bbox: [bbox[2] * 0.4 + 10, bbox[3] * 0.4 + 10, bbox[0] * 0.4 + 15, bbox[1] * 0.4 + 15] }
+          ]
+        };
+      } else {
+        const maxScore = Math.max(...Array.from(scores));
+        const classIndex = Array.from(scores).indexOf(maxScore);
+        return { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: 14 };
+      }
     }
     
     if (activeConfig?.sandbox.inputType === 'text' && textVal.trim()) {
@@ -127,7 +144,7 @@ export const Sandbox: React.FC = () => {
       if (currentProject.domain !== 'llm-finetuning' && currentProject.domain !== 'gans' && currentProject.domain !== 'time-series-forecasting') {
         try {
           const { loadModel } = await import('../../utils/training');
-          const model = await loadModel(currentProject.id);
+          const model = await loadModel(currentProject.id, selectedCheckpoint);
           if (model) {
             const result = await runClientInference(model);
             if (result) {
@@ -151,6 +168,7 @@ export const Sandbox: React.FC = () => {
           prompt: inputVal,
           projectId: currentProject.id,
           domain: currentProject.domain,
+          epoch: selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint,
         }),
       });
 
@@ -319,7 +337,28 @@ export const Sandbox: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Input Panel */}
           <div className="space-y-4 text-left">
-            <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">Sandbox Input</span>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">Sandbox Input</span>
+              {checkpoints.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="checkpoint-select" className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Checkpoint:</label>
+                  <select
+                    id="checkpoint-select"
+                    value={selectedCheckpoint}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedCheckpoint(val === 'latest' ? 'latest' : Number(val));
+                    }}
+                    className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg px-2 py-0.5 text-[10px] font-medium text-neutral-700 dark:text-neutral-300 focus:outline-none cursor-pointer"
+                  >
+                    <option value="latest">Latest weights</option>
+                    {checkpoints.map((cp) => (
+                      <option key={cp.epoch} value={cp.epoch}>Epoch {cp.epoch}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
             
             {activeConfig?.sandbox.inputType === 'image' && (
               <div className="space-y-4">

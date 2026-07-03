@@ -15,7 +15,11 @@ export async function POST(request: Request) {
       epoch,
       timestamp: new Date().toLocaleTimeString(),
       fileSize: fileSize || 102400,
-      checkpointUrl: `/api/checkpoints/download?projectId=${projectId}&epoch=${epoch}`
+      checkpointUrl: `/api/checkpoints/download?projectId=${projectId}&epoch=${epoch}`,
+      modelArtifact: modelArtifact ? {
+        ...modelArtifact,
+        savedAt: new Date().toISOString(),
+      } : undefined
     };
 
     const updatePayload: Record<string, unknown> = {

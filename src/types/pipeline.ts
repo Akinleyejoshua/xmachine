@@ -129,6 +129,16 @@ export interface TrainingMetric {
   accuracy?: number;
   valLoss?: number;
   valAccuracy?: number;
+  perplexity?: number;
+  tokens_per_sec?: number;
+  mAP?: number;
+  mAP_50?: number;
+  g_loss?: number;
+  d_loss?: number;
+  fid?: number;
+  mae?: number;
+  val_mae?: number;
+  [key: string]: any;
 }
 
 export type TrainingStatus = 'idle' | 'training' | 'paused' | 'completed' | 'failed';
@@ -138,6 +148,7 @@ export interface Checkpoint {
   timestamp: string;
   fileSize: number;
   checkpointUrl: string;
+  modelArtifact?: any;
 }
 
 export interface ModelConfig {
@@ -205,7 +216,7 @@ export interface PipelineActions {
   setTrainingStatus: (status: TrainingStatus) => void;
   updateMetrics: (metric: TrainingMetric) => void;
   setCurrentEpoch: (epoch: number) => void;
-  addCheckpoint: (checkpoint: Checkpoint) => void;
+  addCheckpoint: (checkpoint: Checkpoint, modelArtifact?: any) => Promise<void>;
   clearTrainingState: () => void;
 
   // Sandbox Inference Actions
