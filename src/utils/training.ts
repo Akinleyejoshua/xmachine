@@ -181,7 +181,10 @@ export async function loadModel(projectId: string, epoch?: number | 'latest'): P
       project = json?.data;
     }
 
-    if (!project) return null;
+    if (!project) {
+      console.warn(`[loadModel] Project document not found in database for ID: ${projectId}`);
+      return null;
+    }
 
     let artifact = null;
     if (epoch && epoch !== 'latest') {
@@ -191,16 +194,25 @@ export async function loadModel(projectId: string, epoch?: number | 'latest'): P
       artifact = project.modelArtifact;
     }
 
-    if (!artifact) {
+    if (!artifact || !artifact.topology || !artifact.weightData) {
       const sortedCheckpoints = [...(project.checkpoints || [])]
-        .filter((cp: any) => cp.modelArtifact?.topology)
+        .filter((cp: any) => cp.modelArtifact?.topology && cp.modelArtifact?.weightData)
         .sort((a: any, b: any) => b.epoch - a.epoch);
       if (sortedCheckpoints.length > 0) {
         artifact = sortedCheckpoints[0].modelArtifact;
       }
     }
 
-    if (!artifact?.topology || !artifact?.weightData) {
+    if (!artifact) {
+      console.warn(`[loadModel] No model checkpoint artifact found for project ID: ${projectId}`);
+      return null;
+    }
+
+    if (!artifact.topology || !artifact.weightData) {
+      console.warn(`[loadModel] Artifact found, but topology or weightData is missing for project ID: ${projectId}`, {
+        hasTopology: !!artifact.topology,
+        hasWeightData: !!artifact.weightData
+      });
       return null;
     }
 
@@ -214,16 +226,26 @@ export async function loadModel(projectId: string, epoch?: number | 'latest'): P
         ? artifact.weightSpecs
         : [];
 
-    const model = await t.loadLayersModel(
-      t.io.fromMemory({
-        modelTopology,
-        weightSpecs,
-        weightData: base64ToArrayBuffer(artifact.weightData),
-      })
-    );
-    return model;
+    try {
+      const model = await t.loadLayersModel(
+        t.io.fromMemory({
+          modelTopology,
+          weightSpecs,
+          weightData: base64ToArrayBuffer(artifact.weightData),
+        })
+      );
+      return model;
+    } catch (error) {
+      console.error('[loadModel] loadLayersModel execution failed:', error);
+      console.log('[loadModel] Artifact details:', {
+        topologyKeys: modelTopology ? Object.keys(modelTopology) : null,
+        specsCount: weightSpecs?.length,
+        weightDataLength: artifact.weightData?.length
+      });
+      return null;
+    }
   } catch (error) {
-    console.warn('Failed to load model:', error);
+    console.error('[loadModel] Database query or fetch failed:', error);
     return null;
   }
 }
