@@ -307,6 +307,16 @@ print("PyTorch model ready for scaling!")
         ({ xs, ys } = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed));
       }
 
+      if (ys && model) {
+        const outShape = model.outputs[0].shape;
+        const targetShape = outShape.map((d: any) => d === null || d === -1 ? (etl.batchSize || 32) : d);
+        try {
+          ys = ys.reshape(targetShape);
+        } catch (e) {
+          console.warn('Target reshape failed:', e);
+        }
+      }
+
       setTrainingStatus('training');
       setLogs(prev => [...prev, `[INFO] Model initialized successfully. Input shape: [${inputShape.join(', ')}]`]);
     } catch (err) {
