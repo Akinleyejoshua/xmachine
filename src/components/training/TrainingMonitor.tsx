@@ -1,5 +1,103 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePipelineStore } from '../../store/usePipelineStore';
+import { detectFileClass } from '../etl/ETLCanvas';
+
+// Helper to generate batches from real uploaded files in the ETL data pipeline
+const generateRealBatch = async (
+  files: any[],
+  domain: string,
+  inputShape: number[],
+  classNames: string[],
+  batchSize: number
+): Promise<{ xs: any; ys: any }> => {
+  const t = await import('../../utils/model').then(m => m.getTf());
+  
+  const validFiles = files.filter(f => f.rawContent);
+  if (validFiles.length === 0) {
+    throw new Error("No files with rawContent found.");
+  }
+
+  const selectedFiles = [];
+  for (let i = 0; i < batchSize; i++) {
+    const idx = Math.floor(Math.random() * validFiles.length);
+    selectedFiles.push(validFiles[idx]);
+  }
+
+  if (domain === 'cv-classification' || domain === 'object-detection') {
+    const [height, width, channels] = inputShape;
+    const images: any[] = [];
+    const labels: number[] = [];
+
+    for (const file of selectedFiles) {
+      const img = new window.Image();
+      img.src = file.rawContent;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      
+      let tensor = t.browser.fromPixels(img);
+      tensor = tensor.resizeBilinear([height, width]).toFloat().div(255);
+      images.push(tensor);
+
+      const className = detectFileClass(file.name, classNames) || classNames[0];
+      const classIndex = classNames.indexOf(className);
+      labels.push(classIndex !== -1 ? classIndex : 0);
+    }
+
+    const xs = t.stack(images);
+    images.forEach(img => img.dispose());
+
+    const ys = t.oneHot(t.tensor1d(labels, 'int32'), classNames.length);
+    return { xs, ys };
+  }
+
+  if (domain === 'nlp' || domain === 'llm-finetuning') {
+    const seqLen = inputShape[0] || 100;
+    const samples: number[][] = [];
+    const labels: number[] = [];
+
+    for (const file of selectedFiles) {
+      const text = file.rawContent;
+      const tokens = text.split(/\s+/).map((w: string) => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
+      while (tokens.length < seqLen) tokens.push(0);
+      samples.push(tokens.slice(0, seqLen));
+
+      const className = detectFileClass(file.name, classNames) || classNames[0];
+      const classIndex = classNames.indexOf(className);
+      labels.push(classIndex !== -1 ? classIndex : 0);
+    }
+
+    const xs = t.tensor2d(samples, [batchSize, seqLen]);
+    const ys = t.oneHot(t.tensor1d(labels, 'int32'), classNames.length);
+    return { xs, ys };
+  }
+
+  if (domain === 'time-series-forecasting') {
+    const lookbackLen = inputShape[0] || 30;
+    const forecastLen = 1;
+    const samples: number[][] = [];
+    const targets: number[] = [];
+
+    for (const file of selectedFiles) {
+      const numbers = file.rawContent.split(/[\s,]+/).map((v: string) => parseFloat(v)).filter((v: number) => !isNaN(v));
+      if (numbers.length < lookbackLen + forecastLen) {
+        while (numbers.length < lookbackLen + forecastLen) numbers.push(Math.random() * 100);
+      }
+      const sliceStart = Math.floor(Math.random() * (numbers.length - lookbackLen - forecastLen));
+      const seq = numbers.slice(sliceStart, sliceStart + lookbackLen);
+      const target = numbers[sliceStart + lookbackLen];
+      samples.push(seq);
+      targets.push(target);
+    }
+
+    const xs = t.tensor3d(samples.map(seq => seq.map(v => [v])), [batchSize, lookbackLen, 1]);
+    const ys = t.tensor2d(targets, [batchSize, 1]);
+    return { xs, ys };
+  }
+
+  throw new Error(`Domain ${domain} not supported for real data training`);
+};
 import { 
   Play, Pause, RotateCcw, Download, TrendingUp, BarChart2, 
   Activity, Disc, GitCommitHorizontal, History, Cpu, ShieldAlert,
@@ -45,6 +143,15 @@ export const TrainingMonitor: React.FC = () => {
   const [precision, setPrecision] = useState<'fp32' | 'fp16' | 'bf16'>('fp16');
   const [earlyStopping, setEarlyStopping] = useState(true);
   const [esPatience, setEsPatience] = useState(5);
+
+  const classNames = React.useMemo(() => {
+    if (!currentProject) return [];
+    if (currentProject.domain === 'gans') return ['Real Distribution', 'Synthesized'];
+    if (currentProject.domain === 'llm-finetuning') return ['Target Instruction', 'Aligned Output'];
+    const domainConfig = DOMAIN_CONFIGS[currentProject.domain as keyof typeof DOMAIN_CONFIGS];
+    const domainDefaults = domainConfig?.pipeline?.defaultClassNames;
+    return etl.classNames && etl.classNames.length > 0 ? etl.classNames : domainDefaults && domainDefaults.length > 0 ? domainDefaults : ['Cat', 'Dog', 'Bird'];
+  }, [etl.classNames, currentProject?.domain]);
   const [lrScheduler, setLrScheduler] = useState<'constant' | 'step' | 'cosine'>('cosine');
 
   // VRAM & Hardware telemetry simulation
@@ -298,13 +405,33 @@ print("PyTorch model ready for scaling!")
       });
 
       const seed = etl.seed || 42;
-      if (currentProject.domain === 'nlp' || currentProject.domain === 'llm-finetuning') {
-        const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
-        ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed));
-      } else if (currentProject.domain === 'time-series-forecasting') {
-        ({ xs, ys } = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed));
+      const hasRealData = etl.files.some(f => f.rawContent);
+      if (hasRealData) {
+        try {
+          setLogs(prev => [...prev, `[INFO] Ingesting real data samples from pipeline files for training...`]);
+          ({ xs, ys } = await generateRealBatch(etl.files, currentProject.domain, inputShape, classNames, etl.batchSize || 32));
+        } catch (e) {
+          console.warn('Failed to generate real data batch, falling back to synthetic:', e);
+          setLogs(prev => [...prev, `[WARN] Failed to load real data batch: ${e instanceof Error ? e.message : e}. Falling back to synthetic batch.`]);
+          
+          if (currentProject.domain === 'nlp' || currentProject.domain === 'llm-finetuning') {
+            const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
+            ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed));
+          } else if (currentProject.domain === 'time-series-forecasting') {
+            ({ xs, ys } = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed));
+          } else {
+            ({ xs, ys } = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed));
+          }
+        }
       } else {
-        ({ xs, ys } = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed));
+        if (currentProject.domain === 'nlp' || currentProject.domain === 'llm-finetuning') {
+          const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
+          ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed));
+        } else if (currentProject.domain === 'time-series-forecasting') {
+          ({ xs, ys } = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed));
+        } else {
+          ({ xs, ys } = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed));
+        }
       }
 
       if (ys && model) {

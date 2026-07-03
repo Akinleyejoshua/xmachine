@@ -22,6 +22,51 @@ export async function generateSyntheticBatch(
   const t = await getTf();
   const baseSeed = seed * 1000;
   const xsShape = [batchSize, ...inputShape];
+
+  // If CV image input: generate class-conditional spatial patterns (Best Practice)
+  if (inputShape.length === 3) {
+    const [height, width, channels] = inputShape;
+    const targetSize = height * width * channels;
+    const total = batchSize * targetSize;
+    const values = new Float32Array(total);
+    const labels: number[] = [];
+    const rng = createRandom(baseSeed);
+
+    for (let b = 0; b < batchSize; b++) {
+      const label = b % classCount;
+      labels.push(label);
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          let isPattern = false;
+          if (label === 0) {
+            // Square in center
+            isPattern = (y >= height * 0.3 && y <= height * 0.7 && x >= width * 0.3 && x <= width * 0.7);
+          } else if (label === 1) {
+            // Cross in center
+            isPattern = (Math.abs(y - height / 2) < height * 0.08) || (Math.abs(x - width / 2) < width * 0.08);
+          } else if (label === 2) {
+            // Diagonal line
+            isPattern = Math.abs((y / height) - (x / width)) < 0.08;
+          } else {
+            // Border outline
+            isPattern = (y < height * 0.1 || y > height * 0.9 || x < width * 0.1 || x > width * 0.9);
+          }
+
+          for (let c = 0; c < channels; c++) {
+            const idx = b * targetSize + (y * width + x) * channels + c;
+            values[idx] = isPattern ? (0.75 + rng() * 0.25) : (rng() * 0.25);
+          }
+        }
+      }
+    }
+
+    const xs = t.tensor(values, xsShape);
+    const ys = t.oneHot(t.tensor1d(labels, 'int32'), classCount);
+    return { xs, ys };
+  }
+
+  // Fallback for non-CV inputs
   const xs = await generateSyntheticTensor(xsShape, baseSeed, 0, 1);
   const labels = deriveLabelsFromInput(xs, classCount);
   const ys = t.oneHot(t.tensor1d(labels, 'int32'), classCount);

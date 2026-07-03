@@ -35,7 +35,8 @@ const ProjectSchema: Schema = new Schema(
         id: String,
         name: String,
         size: Number,
-        type: { type: String, enum: ['csv', 'json', 'txt', 'image'] }
+        type: { type: String, enum: ['csv', 'json', 'txt', 'image'] },
+        rawContent: String
       }],
       actions: [{
         id: String,

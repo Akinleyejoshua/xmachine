@@ -205,23 +205,39 @@ export const ETLCanvas: React.FC = () => {
     if (e.target.files?.[0]) handleUploadedFiles(Array.from(e.target.files));
   };
 
-  const handleUploadedFiles = (files: File[]) => {
-    const newFiles = files
+  const handleUploadedFiles = async (files: File[]) => {
+    const readPromises = files
       .filter(file => {
         const name = file.name.toLowerCase();
         return allowedExtensions.some(ext => name.endsWith(ext));
       })
-      .map(file => {
+      .map(async file => {
         let type: 'csv' | 'json' | 'txt' | 'image' = 'txt';
         if (file.type.includes('image') || /\.(jpg|jpeg|png|webp|gif)$/i.test(file.name)) type = 'image';
         else if (file.name.endsWith('.csv')) type = 'csv';
         else if (file.name.endsWith('.json') || file.name.endsWith('.xml')) type = 'json';
+
+        const rawContent = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => resolve('');
+          if (type === 'image') {
+            reader.readAsDataURL(file);
+          } else {
+            reader.readAsText(file);
+          }
+        });
+
         return {
           id: Math.random().toString(36).substring(7),
           name: (file as any).webkitRelativePath || file.name,
-          size: file.size, type,
+          size: file.size,
+          type,
+          rawContent,
         };
       });
+
+    const newFiles = await Promise.all(readPromises);
 
     if (newFiles.length === 0) {
       alert(`No valid files found for the active domain (${activeConfig?.displayName}). Allowed extensions: ${allowedExtensions.join(', ')}`);
