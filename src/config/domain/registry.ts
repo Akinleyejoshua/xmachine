@@ -1,5 +1,6 @@
 import { DomainConfig } from './types';
 import { ProjectDomain } from '../../types/pipeline';
+import { createRandom } from '../../utils/random';
 
 export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
   'cv-classification': {
@@ -81,23 +82,27 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputPlaceholder: 'PNG, JPG, WEBP supported',
       primaryBtnText: 'Compute Image Inference',
       outputTitle: 'Classification Output',
-      defaultMockResult: (input, classNames) => {
-        const predictedClass = classNames[Math.floor(Math.random() * classNames.length)] || 'Cat';
+      defaultMockResult: (input, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const predictedClass = classNames[Math.floor(rand() * classNames.length)] || 'Cat';
         return {
           class: predictedClass,
           confidence: 0.942,
           latencyMs: 14
         };
       },
-      bulkMockResult: (fileName, classNames) => {
-        const trueClass = classNames[Math.floor(Math.random() * classNames.length)] || 'Cat';
-        const isCorrect = Math.random() > 0.15;
-        const confidence = 0.70 + Math.random() * 0.28;
-        const latencyMs = Math.floor(8 + Math.random() * 12);
+      bulkMockResult: (fileName, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const trueClass = classNames[Math.floor(rand() * classNames.length)] || 'Cat';
+        const isCorrect = rand() > 0.15;
+        const confidence = 0.70 + rand() * 0.28;
+        const latencyMs = Math.floor(8 + rand() * 12);
         let predClass = trueClass;
         if (!isCorrect) {
           const alternates = classNames.filter(c => c !== trueClass);
-          predClass = alternates[Math.floor(Math.random() * alternates.length)] || 'IncorrectClass';
+          predClass = alternates[Math.floor(rand() * alternates.length)] || 'IncorrectClass';
         }
         return { name: fileName, trueClass, predClass, confidence, latencyMs, correct: isCorrect };
       }
@@ -181,8 +186,10 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputPlaceholder: 'Upload image and check annotations overlay',
       primaryBtnText: 'Run Object Detector',
       outputTitle: 'Detected Object Tensors',
-      defaultMockResult: (input, classNames) => {
-        const predictedClass = classNames[Math.floor(Math.random() * classNames.length)] || 'Person';
+      defaultMockResult: (input, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const predictedClass = classNames[Math.floor(rand() * classNames.length)] || 'Person';
         return {
           class: predictedClass,
           confidence: 0.895,
@@ -193,15 +200,17 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
           ]
         };
       },
-      bulkMockResult: (fileName, classNames) => {
-        const trueClass = classNames[Math.floor(Math.random() * classNames.length)] || 'Person';
-        const isCorrect = Math.random() > 0.2;
-        const confidence = 0.65 + Math.random() * 0.32;
-        const latencyMs = Math.floor(18 + Math.random() * 20);
+      bulkMockResult: (fileName, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const trueClass = classNames[Math.floor(rand() * classNames.length)] || 'Person';
+        const isCorrect = rand() > 0.2;
+        const confidence = 0.65 + rand() * 0.32;
+        const latencyMs = Math.floor(18 + rand() * 20);
         let predClass = trueClass;
         if (!isCorrect) {
           const alternates = classNames.filter(c => c !== trueClass);
-          predClass = alternates[Math.floor(Math.random() * alternates.length)] || 'Incorrect';
+          predClass = alternates[Math.floor(rand() * alternates.length)] || 'Incorrect';
         }
         return { name: fileName, trueClass, predClass, confidence, latencyMs, correct: isCorrect };
       }
@@ -279,8 +288,10 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputPlaceholder: 'Enter a review or sentence to classify...',
       primaryBtnText: 'Evaluate Sequence',
       outputTitle: 'Classification/Sentiment Result',
-      defaultMockResult: (input, classNames) => {
-        const predictedSentiment = Math.random() > 0.4 ? 'Positive' : 'Negative';
+      defaultMockResult: (input, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const predictedSentiment = rand() > 0.4 ? 'Positive' : 'Negative';
         return {
           sentiment: predictedSentiment,
           confidence: 0.887,
@@ -288,11 +299,13 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
           latencyMs: 8
         };
       },
-      bulkMockResult: (fileName, classNames) => {
-        const trueClass = classNames[Math.floor(Math.random() * classNames.length)] || 'Positive';
-        const isCorrect = Math.random() > 0.12;
-        const confidence = 0.75 + Math.random() * 0.22;
-        const latencyMs = Math.floor(4 + Math.random() * 8);
+      bulkMockResult: (fileName, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const trueClass = classNames[Math.floor(rand() * classNames.length)] || 'Positive';
+        const isCorrect = rand() > 0.12;
+        const confidence = 0.75 + rand() * 0.22;
+        const latencyMs = Math.floor(4 + rand() * 8);
         let predClass = trueClass;
         if (!isCorrect) {
           const alternates = classNames.filter(c => c !== trueClass);
@@ -371,7 +384,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputPlaceholder: '100-dim Noise Distribution',
       primaryBtnText: 'Generate Synthetic Tensor',
       outputTitle: 'Generator Synthesized Image',
-      defaultMockResult: (input, classNames) => {
+      defaultMockResult: (input, classNames, seed) => {
         return {
           generatedImageUrl: '/api/placeholder/224/224', // we can render canvas grid block dynamically
           fidScore: 24.5,
@@ -379,9 +392,11 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
           latencyMs: 38
         };
       },
-      bulkMockResult: (fileName, classNames) => {
-        const confidence = 0.5 + Math.random() * 0.5;
-        const latencyMs = Math.floor(25 + Math.random() * 15);
+      bulkMockResult: (fileName, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const confidence = 0.5 + rand() * 0.5;
+        const latencyMs = Math.floor(25 + rand() * 15);
         return { name: fileName, trueClass: 'Real Distribution', predClass: 'Synthesized', confidence, latencyMs, correct: true };
       }
     }
@@ -447,7 +462,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputPlaceholder: 'Enter prompt query (e.g. Write a quicksort in Rust)...',
       primaryBtnText: 'Generate Completion',
       outputTitle: 'Causal Autoregressive Output',
-      defaultMockResult: (input, classNames) => {
+      defaultMockResult: (input, classNames, seed) => {
         return {
         text: `This is a mock response for: "${input}". Replace this with an actual LLM API call.`,
           perplexity: 4.85,
@@ -455,9 +470,11 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
           tokens: 112
         };
       },
-      bulkMockResult: (fileName, classNames) => {
-        const confidence = 0.8 + Math.random() * 0.15;
-        const latencyMs = Math.floor(180 + Math.random() * 120);
+      bulkMockResult: (fileName, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const confidence = 0.8 + rand() * 0.15;
+        const latencyMs = Math.floor(180 + rand() * 120);
         return { name: fileName, trueClass: 'Target Instruction', predClass: 'Aligned Output', confidence, latencyMs, correct: true };
       }
     }
@@ -537,7 +554,9 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputPlaceholder: 'Enter numeric sequence or drop a CSV file of values...',
       primaryBtnText: 'Generate Forecast Horizon',
       outputTitle: 'Continuous Forecast Chart',
-      defaultMockResult: (input, classNames) => {
+      defaultMockResult: (input, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
         const lookbackPoints = 30;
         const forecastPoints = 10;
         const lookback = [];
@@ -545,15 +564,15 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         const confidenceLower = [];
         const confidenceUpper = [];
         
-        let val = 100 + Math.random() * 20;
+        let val = 100 + rand() * 20;
         for (let i = 0; i < lookbackPoints; i++) {
-          val = val + (Math.random() - 0.45) * 5;
+          val = val + (rand() - 0.45) * 5;
           lookback.push(parseFloat(val.toFixed(2)));
         }
         
         let lastVal = lookback[lookback.length - 1];
         for (let i = 0; i < forecastPoints; i++) {
-          lastVal = lastVal + 2 + (Math.random() - 0.5) * 4;
+          lastVal = lastVal + 2 + (rand() - 0.5) * 4;
           forecast.push(parseFloat(lastVal.toFixed(2)));
           const uncertainty = (i + 1) * 1.5;
           confidenceLower.push(parseFloat((lastVal - uncertainty).toFixed(2)));
@@ -570,9 +589,11 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
           mae: 0.96
         };
       },
-      bulkMockResult: (fileName, classNames) => {
-        const confidence = 0.8 + Math.random() * 0.15;
-        const latencyMs = Math.floor(10 + Math.random() * 8);
+      bulkMockResult: (fileName, classNames, seed) => {
+        const rng = typeof seed === 'number' ? createRandom(seed) : null;
+        const rand = rng ? () => rng() : Math.random;
+        const confidence = 0.8 + rand() * 0.15;
+        const latencyMs = Math.floor(10 + rand() * 8);
         return { name: fileName, trueClass: 'Actual sequence', predClass: 'Actual sequence', confidence, latencyMs, correct: true };
       }
     }

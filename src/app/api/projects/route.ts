@@ -2,9 +2,20 @@ import { NextResponse } from 'next/server';
 import { dbConnect } from '../../../utils/db';
 import StudioWorkspaceProject from '../../../models/Project';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await dbConnect();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      const project = await StudioWorkspaceProject.findById(id);
+      if (!project) {
+        return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, data: project });
+    }
+
     const projects = await StudioWorkspaceProject.find({}).sort({ updatedAt: -1 });
     return NextResponse.json({ success: true, data: projects });
   } catch (error: any) {

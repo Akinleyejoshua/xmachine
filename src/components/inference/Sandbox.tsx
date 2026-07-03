@@ -67,6 +67,52 @@ export const Sandbox: React.FC = () => {
     return etl.classNames && etl.classNames.length > 0 ? etl.classNames : domainDefaults && domainDefaults.length > 0 ? domainDefaults : ['Cat', 'Dog', 'Bird'];
   }, [etl.classNames, currentProject.domain]);
 
+  const getInputShape = (domain: string): number[] => {
+    const cfg = DOMAIN_CONFIGS[domain as keyof typeof DOMAIN_CONFIGS];
+    const first = cfg?.modelBuilder?.defaultLayers?.[0];
+    if (domain === 'nlp') return [(first?.config?.inputLength as number) || 100];
+    if (domain === 'time-series-forecasting') return [30, 1];
+    return (first?.config?.inputShape as number[]) || (domain === 'object-detection' ? [416, 416, 3] : [224, 224, 3]);
+  };
+
+  const runClientInference = async (model: any): Promise<any> => {
+    const t = await import('../../utils/model').then(m => m.getTf());
+    
+    if (activeConfig?.sandbox.inputType === 'image' && imagePreview) {
+      const img = new window.Image();
+      img.src = imagePreview;
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+      let tensor = t.browser.fromPixels(img);
+      const shape = getInputShape(currentProject.domain);
+      if (shape.length >= 2) {
+        tensor = tensor.resizeBilinear([shape[0], shape[1]]).toFloat().div(255).expandDims(0);
+      }
+      const prediction = model.predict(tensor);
+      tensor.dispose();
+      const scores = await prediction.data() as Float32Array;
+      prediction.dispose();
+      const maxScore = Math.max(...Array.from(scores));
+      const classIndex = Array.from(scores).indexOf(maxScore);
+      return { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: 14 };
+    }
+    
+    if (activeConfig?.sandbox.inputType === 'text' && textVal.trim()) {
+      const seqLen = getInputShape(currentProject.domain)[0] || 100;
+      const tokens = textVal.split(/\s+/).map(w => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
+      while (tokens.length < seqLen) tokens.push(0);
+      const inputTensor = t.tensor2d([tokens.slice(0, seqLen)], [1, seqLen]);
+      const prediction = model.predict(inputTensor);
+      inputTensor.dispose();
+      const scores = await prediction.data() as Float32Array;
+      prediction.dispose();
+      const maxScore = Math.max(...Array.from(scores));
+      const classIndex = Array.from(scores).indexOf(maxScore);
+      return { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: 8 };
+    }
+    
+    return null;
+  };
+
   const handlePredict = async () => {
     setInferenceActive(true);
 
@@ -75,6 +121,24 @@ export const Sandbox: React.FC = () => {
       if (!inputVal) {
         setInferenceActive(false);
         return;
+      }
+
+      // Try client-side inference with real TF.js model first
+      if (currentProject.domain !== 'llm-finetuning' && currentProject.domain !== 'gans' && currentProject.domain !== 'time-series-forecasting') {
+        try {
+          const { loadModel } = await import('../../utils/training');
+          const model = await loadModel(currentProject.id);
+          if (model) {
+            const result = await runClientInference(model);
+            if (result) {
+              setInferenceResult(result);
+              setInferenceActive(false);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Client inference failed, falling back to API:', e);
+        }
       }
 
       // Call the inference API
@@ -111,17 +175,17 @@ export const Sandbox: React.FC = () => {
     setBulkResults(null);
 
     setTimeout(() => {
-      const items: BulkItem[] = etl.files.length > 0 ? etl.files.map(file => {
-        return activeConfig?.sandbox.bulkMockResult(file.name, classNames);
-      }) : [
-        activeConfig?.sandbox.bulkMockResult('val_sample_01.dat', classNames),
-        activeConfig?.sandbox.bulkMockResult('val_sample_02.dat', classNames),
-        activeConfig?.sandbox.bulkMockResult('val_sample_03.dat', classNames),
-        activeConfig?.sandbox.bulkMockResult('val_sample_04.dat', classNames),
-        activeConfig?.sandbox.bulkMockResult('val_sample_05.dat', classNames),
-        activeConfig?.sandbox.bulkMockResult('val_sample_06.dat', classNames),
-        activeConfig?.sandbox.bulkMockResult('val_sample_07.dat', classNames)
-      ];
+    const items: BulkItem[] = etl.files.length > 0 ? etl.files.map(file => {
+      return activeConfig?.sandbox.bulkMockResult(file.name, classNames, etl.seed);
+    }) : [
+      activeConfig?.sandbox.bulkMockResult('val_sample_01.dat', classNames, etl.seed),
+      activeConfig?.sandbox.bulkMockResult('val_sample_02.dat', classNames, etl.seed),
+      activeConfig?.sandbox.bulkMockResult('val_sample_03.dat', classNames, etl.seed),
+      activeConfig?.sandbox.bulkMockResult('val_sample_04.dat', classNames, etl.seed),
+      activeConfig?.sandbox.bulkMockResult('val_sample_05.dat', classNames, etl.seed),
+      activeConfig?.sandbox.bulkMockResult('val_sample_06.dat', classNames, etl.seed),
+      activeConfig?.sandbox.bulkMockResult('val_sample_07.dat', classNames, etl.seed)
+    ];
 
       const correctCount = items.filter(item => item.correct).length;
       const incorrectCount = items.length - correctCount;

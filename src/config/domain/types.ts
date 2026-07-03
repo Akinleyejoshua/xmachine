@@ -46,8 +46,8 @@ export interface SandboxBlueprint {
   inputPlaceholder: string;
   primaryBtnText: string;
   outputTitle: string;
-  defaultMockResult: (input: any, classNames: string[]) => any;
-  bulkMockResult: (fileName: string, classNames: string[]) => any;
+  defaultMockResult: (input: any, classNames: string[], seed?: number) => any;
+  bulkMockResult: (fileName: string, classNames: string[], seed?: number) => any;
 }
 
 export interface DomainConfig {

@@ -5,7 +5,7 @@ import StudioWorkspaceProject from '../../../models/Project';
 export async function POST(request: Request) {
   try {
     await dbConnect();
-    const { projectId, epoch, fileSize, metrics } = await request.json();
+    const { projectId, epoch, fileSize, metrics, modelArtifact } = await request.json();
 
     if (!projectId) {
       return NextResponse.json({ success: false, error: 'Project ID is required' }, { status: 400 });
@@ -18,13 +18,24 @@ export async function POST(request: Request) {
       checkpointUrl: `/api/checkpoints/download?projectId=${projectId}&epoch=${epoch}`
     };
 
+    const updatePayload: Record<string, unknown> = {
+      $push: { checkpoints: checkpoint },
+      ...(metrics ? { $push: { metricsHistory: { epoch, ...metrics } } } : {}),
+    };
+
+    if (modelArtifact) {
+      updatePayload.$set = {
+        modelArtifact: {
+          ...modelArtifact,
+          savedAt: new Date().toISOString(),
+        },
+        latestModelCheckpointEpoch: epoch,
+      };
+    }
+
     const updatedProject = await StudioWorkspaceProject.findByIdAndUpdate(
       projectId,
-      { 
-        $push: { checkpoints: checkpoint },
-        // Also append to metrics history if provided
-        ...(metrics ? { $push: { metricsHistory: { epoch, ...metrics } } } : {})
-      },
+      updatePayload,
       { new: true }
     );
 

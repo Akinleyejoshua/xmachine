@@ -50,7 +50,7 @@ export async function POST(request: Request) {
 
     // Handle other domains using registry mock results
     if (domainConfig?.sandbox?.defaultMockResult) {
-      const result = domainConfig.sandbox.defaultMockResult(prompt, classNames);
+      const result = domainConfig.sandbox.defaultMockResult(prompt, classNames, project?.etl?.seed);
       return NextResponse.json({ success: true, data: result });
     }
 
