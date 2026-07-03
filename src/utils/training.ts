@@ -23,9 +23,24 @@ export async function generateSyntheticBatch(
   const baseSeed = seed * 1000;
   const xsShape = [batchSize, ...inputShape];
   const xs = await generateSyntheticTensor(xsShape, baseSeed, 0, 1);
-  const labels = Array.from({ length: batchSize }, (_, i) => i % classCount);
+  const labels = deriveLabelsFromInput(xs, classCount);
   const ys = t.oneHot(t.tensor1d(labels, 'int32'), classCount);
   return { xs, ys };
+}
+
+function deriveLabelsFromInput(xs: any, classCount: number): number[] {
+  const values = Array.from((xs.dataSync?.() as ArrayLike<number>) ?? []);
+  const dims: number[] = Array.isArray(xs.shape) ? xs.shape : [];
+  const perSample = dims.length > 1 ? dims.slice(1).reduce((a: number, b: number) => a * b, 1) : 1;
+  const labels: number[] = [];
+  for (let i = 0; i < (dims[0] ?? values.length / (perSample || 1)); i++) {
+    let sum = 0;
+    for (let j = 0; j < perSample; j++) {
+      sum += values[i * perSample + j] || 0;
+    }
+    labels.push(Math.floor((Math.abs(sum) * 10) % classCount) || 0);
+  }
+  return labels;
 }
 
 export async function generateSyntheticTextBatch(
@@ -43,7 +58,7 @@ export async function generateSyntheticTextBatch(
     ),
     [batchSize, seqLen]
   );
-  const labels = Array.from({ length: batchSize }, (_, i) => i % classCount);
+  const labels = deriveLabelsFromInput(xs, classCount);
   const ys = t.oneHot(t.tensor1d(labels, 'int32'), classCount);
   return { xs, ys };
 }
