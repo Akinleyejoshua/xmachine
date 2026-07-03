@@ -137,13 +137,17 @@ export async function saveModel(model: any, projectId: string): Promise<void> {
 }
 
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  if (!base64 || typeof base64 !== 'string' || base64.trim().startsWith('{')) {
+    return new ArrayBuffer(0);
+  }
+  const cleanBase64 = base64.trim();
   if (typeof window === 'undefined') {
-    const buf = Buffer.from(base64, 'base64');
+    const buf = Buffer.from(cleanBase64, 'base64');
     // Buffer.buffer is a raw ArrayBuffer that might be larger than the view due to pooling.
     // To ensure exact size and alignment, slice the buffer correctly:
     return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   }
-  const binaryString = atob(base64);
+  const binaryString = atob(cleanBase64);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) {
@@ -200,10 +204,20 @@ export async function loadModel(projectId: string, epoch?: number | 'latest'): P
       return null;
     }
 
+    const modelTopology = typeof artifact.topology === 'string'
+      ? JSON.parse(artifact.topology)
+      : artifact.topology;
+
+    const weightSpecs = typeof artifact.weightSpecs === 'string'
+      ? JSON.parse(artifact.weightSpecs)
+      : Array.isArray(artifact.weightSpecs)
+        ? artifact.weightSpecs
+        : [];
+
     const model = await t.loadLayersModel(
       t.io.fromMemory({
-        modelTopology: artifact.topology,
-        weightSpecs: Array.isArray(artifact.weightSpecs) ? artifact.weightSpecs : [],
+        modelTopology,
+        weightSpecs,
         weightData: base64ToArrayBuffer(artifact.weightData),
       })
     );
