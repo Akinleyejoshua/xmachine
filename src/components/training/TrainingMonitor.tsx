@@ -98,6 +98,16 @@ const generateRealBatch = async (
 
   throw new Error(`Domain ${domain} not supported for real data training`);
 };
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+};
 import { 
   Play, Pause, RotateCcw, Download, TrendingUp, BarChart2, 
   Activity, Disc, GitCommitHorizontal, History, Cpu, ShieldAlert,
@@ -619,14 +629,9 @@ print("PyTorch model ready for scaling!")
               save: async (data: any) => data,
               load: async () => { throw new Error('load not supported'); }
             });
-            const weightData =
-              typeof artifacts?.weightData === 'string'
-                ? artifacts.weightData
-                : typeof artifacts?.weightData?.buffer === 'string'
-                  ? artifacts.weightData.buffer
-                  : typeof artifacts?.weightData === 'object'
-                    ? JSON.stringify(artifacts.weightData)
-                    : '';
+            const weightData = artifacts?.weightData
+              ? arrayBufferToBase64(artifacts.weightData)
+              : '';
 
             checkpointArtifact = {
               epoch,

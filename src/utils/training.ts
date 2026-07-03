@@ -136,6 +136,22 @@ export async function saveModel(model: any, projectId: string): Promise<void> {
   }
 }
 
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  if (typeof window === 'undefined') {
+    const buf = Buffer.from(base64, 'base64');
+    // Buffer.buffer is a raw ArrayBuffer that might be larger than the view due to pooling.
+    // To ensure exact size and alignment, slice the buffer correctly:
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  }
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
 export async function loadModel(projectId: string, epoch?: number | 'latest'): Promise<any> {
   const t = await getTf();
   
@@ -179,7 +195,7 @@ export async function loadModel(projectId: string, epoch?: number | 'latest'): P
       t.io.fromMemory({
         modelTopology: artifact.topology,
         weightSpecs: Array.isArray(artifact.weightSpecs) ? artifact.weightSpecs : [],
-        weightData: artifact.weightData,
+        weightData: base64ToArrayBuffer(artifact.weightData),
       })
     );
     return model;
