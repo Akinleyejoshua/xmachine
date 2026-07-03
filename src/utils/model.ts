@@ -122,13 +122,13 @@ export function buildOptimizer(tf: any, name: string, lr: number) {
   }
 }
 
-export function buildLoss(tf: any, name: string) {
+export function buildLoss(tf: any, name: string): string {
   switch (name) {
-    case 'meanSquaredError': return tf.losses.meanSquaredError;
-    case 'binaryCrossentropy': return tf.losses.binaryCrossentropy;
-    case 'sparseCategoricalCrossentropy': return tf.losses.sparseCategoricalCrossentropy;
-    case 'meanAbsoluteError': return tf.losses.meanAbsoluteError;
-    case 'quantileLoss': return tf.losses.meanAbsoluteError;
-    case 'categoricalCrossentropy': default: return tf.losses.categoricalCrossentropy;
+    case 'meanSquaredError': return 'meanSquaredError';
+    case 'binaryCrossentropy': return 'binaryCrossentropy';
+    case 'sparseCategoricalCrossentropy': return 'categoricalCrossentropy';
+    case 'meanAbsoluteError': return 'meanAbsoluteError';
+    case 'quantileLoss': return 'meanAbsoluteError';
+    case 'categoricalCrossentropy': default: return 'categoricalCrossentropy';
   }
 }
