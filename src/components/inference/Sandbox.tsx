@@ -72,7 +72,7 @@ export const Sandbox: React.FC = () => {
   const getInputShape = (domain: string): number[] => {
     const cfg = DOMAIN_CONFIGS[domain as keyof typeof DOMAIN_CONFIGS];
     const first = cfg?.modelBuilder?.defaultLayers?.[0];
-    if (domain === 'nlp') return [(first?.config?.inputLength as number) || 100];
+    if (domain === 'nlp' || domain === 'llm-finetuning') return [(first?.config?.inputLength as number) || 100];
     if (domain === 'time-series-forecasting') return [30, 1];
     return (first?.config?.inputShape as number[]) || (domain === 'object-detection' ? [416, 416, 3] : [224, 224, 3]);
   };
@@ -126,7 +126,7 @@ export const Sandbox: React.FC = () => {
       }
     }
     
-    if (activeConfig?.sandbox.inputType === 'text' && textVal.trim()) {
+    if (activeConfig?.sandbox.inputType === 'text' && currentProject.domain !== 'llm-finetuning' && textVal.trim()) {
       const seqLen = getInputShape(currentProject.domain)[0] || 100;
       const tokens = textVal.split(/\s+/).map(w => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
       while (tokens.length < seqLen) tokens.push(0);
