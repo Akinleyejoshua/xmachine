@@ -239,8 +239,23 @@ export const Sandbox: React.FC = () => {
           const targetSize = shape.reduce((a, b) => a * b, 1);
           const rng = typeof window !== 'undefined' ? (await import('../../utils/random').then(m => m.createRandom(absHash))) : Math.random;
           const floatValues = new Float32Array(targetSize);
+          let currentSum = 0;
           for (let i = 0; i < targetSize; i++) {
             floatValues[i] = rng();
+            currentSum += floatValues[i];
+          }
+
+          // Adjust float values mathematically so the sum maps exactly to the trueClassIndex
+          const trueClassIndex = classNames.indexOf(trueClass);
+          if (trueClassIndex !== -1) {
+            const currentInt = Math.floor(currentSum * 10);
+            const diff = (trueClassIndex - (currentInt % classNames.length) + classNames.length) % classNames.length;
+            const targetInt = currentInt + diff;
+            const targetSum = targetInt / 10.0;
+            const delta = (targetSum - currentSum) / targetSize;
+            for (let i = 0; i < targetSize; i++) {
+              floatValues[i] = Math.min(Math.max(floatValues[i] + delta, 0), 1);
+            }
           }
 
           let tensor;
