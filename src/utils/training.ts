@@ -187,6 +187,15 @@ export async function loadModel(projectId: string, epoch?: number | 'latest'): P
       artifact = project.modelArtifact;
     }
 
+    if (!artifact) {
+      const sortedCheckpoints = [...(project.checkpoints || [])]
+        .filter((cp: any) => cp.modelArtifact?.topology)
+        .sort((a: any, b: any) => b.epoch - a.epoch);
+      if (sortedCheckpoints.length > 0) {
+        artifact = sortedCheckpoints[0].modelArtifact;
+      }
+    }
+
     if (!artifact?.topology || !artifact?.weightData) {
       return null;
     }
