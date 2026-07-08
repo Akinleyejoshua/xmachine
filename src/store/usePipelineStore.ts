@@ -384,7 +384,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
 
       setCurrentEpoch: (epoch) => set({ currentEpoch: epoch }),
 
-      addCheckpoint: async (checkpoint, modelArtifact) => {
+      addCheckpoint: async (checkpoint, _modelArtifact) => {
         const currentProject = usePipelineStore.getState().currentProject;
         if (currentProject) {
           try {
@@ -397,7 +397,6 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
                 projectId: currentProject.id,
                 epoch: checkpoint.epoch,
                 fileSize: checkpoint.fileSize,
-                modelArtifact,
               }),
             });
             const data = await response.json();

@@ -1,14 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { ProjectDomain, ModelConfig, ETLPipeline, TrainingMetric, Checkpoint } from '../types/pipeline';
 
-export interface ModelArtifact {
-  epoch: number;
-  topology: any;
-  weightSpecs: any[];
-  weightData: string;
-  savedAt: string;
-}
-
 export interface IProject extends Document {
   name: string;
   domain: ProjectDomain;
@@ -16,8 +8,6 @@ export interface IProject extends Document {
   modelConfig: ModelConfig;
   metricsHistory: TrainingMetric[];
   checkpoints: Checkpoint[];
-  modelArtifact?: ModelArtifact | null;
-  latestModelCheckpointEpoch?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,18 +64,8 @@ const ProjectSchema: Schema = new Schema(
       epoch: Number,
       timestamp: String,
       fileSize: Number,
-      checkpointUrl: String,
-      modelArtifact: Schema.Types.Mixed
-    }],
-    modelArtifact: {
-      epoch: Number,
-      topology: Schema.Types.Mixed,
-      weightSpecs: [Schema.Types.Mixed],
-      weightData: { type: String, default: '' },
-      weightDataLength: { type: Number, default: 0 },
-      savedAt: String
-    },
-    latestModelCheckpointEpoch: { type: Number, default: null }
+      checkpointUrl: String
+    }]
   },
   { timestamps: true }
 );

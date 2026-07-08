@@ -110,15 +110,6 @@ const generateRealBatch = async (
   throw new Error(`Domain ${domain} not supported for real data training`);
 };
 
-const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return window.btoa(binary);
-};
 import { 
   Play, Pause, RotateCcw, Download, TrendingUp, BarChart2, 
   Activity, Disc, GitCommitHorizontal, History, Cpu, ShieldAlert,
@@ -616,27 +607,9 @@ print("PyTorch model ready for scaling!")
       ]);
 
       if (epoch % 2 === 0 || epoch === targetEpoch) {
-        let checkpointArtifact: any = null;
+        // Save to IndexedDB for client-side inference
         if (model && currentProject) {
-          try {
-            const t = await getTf();
-            const artifacts: any = await model.save({
-              save: async (data: any) => data,
-              load: async () => { throw new Error('load not supported'); }
-            });
-            const weightData = artifacts?.weightData
-              ? arrayBufferToBase64(artifacts.weightData)
-              : '';
-
-            checkpointArtifact = {
-              epoch,
-              topology: artifacts?.modelTopology,
-              weightSpecs: artifacts?.weightSpecs,
-              weightData,
-            };
-          } catch (err) {
-            console.warn('Model artifact export failed:', err);
-          }
+          try { await saveModel(model, currentProject.id); } catch (e) { /* ignore */ }
         }
 
         await addCheckpoint({
@@ -644,10 +617,7 @@ print("PyTorch model ready for scaling!")
           timestamp: new Date().toLocaleTimeString(),
           fileSize: Math.floor(1024 * 100 + Math.random() * 50 * 1024),
           checkpointUrl: `/api/checkpoints/download?projectId=${currentProject.id}&epoch=${epoch}`
-        }, checkpointArtifact);
-
-        // Save to IndexedDB for client-side inference
-        try { await saveModel(model, currentProject.id); } catch (e) { /* ignore */ }
+        });
 
         setLogs(prev => [
           ...prev,

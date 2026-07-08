@@ -86,72 +86,54 @@ export const Sandbox: React.FC = () => {
     setInferenceActive(true);
 
     try {
-      let result: any;
       const inputVal = activeConfig?.sandbox.inputType === 'image' ? imagePreview : textVal;
       if (!inputVal) {
         setInferenceActive(false);
         return;
       }
 
-      // Try API first
-      const response = await fetch('/api/inference', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt: inputVal,
-          projectId: currentProject.id,
-          domain: currentProject.domain,
-          epoch: selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint,
-        }),
-      });
+      const { loadModel } = await import('../../utils/training');
+      const model = await loadModel(currentProject.id, selectedCheckpoint);
+      if (!model) throw new Error('No trained model found in browser storage. Train the model first.');
 
-      const data = await response.json();
+      const { getTf } = await import('../../utils/model');
+      const t = await getTf();
+      const startTime = performance.now();
+      let result: any;
 
-      if (data.success) {
-        result = data.data;
-      } else {
-        // Fall back to client-side inference using IndexedDB model
-        const { loadModel } = await import('../../utils/training');
-        const model = await loadModel(currentProject.id, selectedCheckpoint);
-        if (model && activeConfig?.sandbox.inputType === 'image') {
-          const { getTf } = await import('../../utils/model');
-          const t = await getTf();
-          const img = new window.Image();
-          img.src = inputVal;
-          await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(); });
-          let tensor = t.browser.fromPixels(img);
-          const imgShape = getInputShape(currentProject.domain);
-          if (imgShape.length >= 2) {
-            tensor = tensor.resizeBilinear([imgShape[0], imgShape[1]]).toFloat().div(255).expandDims(0);
-          }
-          const prediction = model.predict(tensor);
-          tensor.dispose();
-          const scores = await prediction.data() as Float32Array;
-          prediction.dispose();
-          const maxScore = Math.max(...Array.from(scores));
-          const classIndex = Array.from(scores).indexOf(maxScore);
-          result = { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: 12 };
-        } else if (model && currentProject.domain === 'nlp') {
-          const { getTf } = await import('../../utils/model');
-          const t = await getTf();
-          const trimmed = inputVal.trim();
-          const tokens = trimmed.split(/\s+/).map((w: string) => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
-          const seqLen = 100;
-          while (tokens.length < seqLen) tokens.push(0);
-          const inputTensor = t.tensor2d([tokens.slice(0, seqLen)], [1, seqLen]);
-          const prediction = model.predict(inputTensor);
-          const scores = await prediction.data() as Float32Array;
-          inputTensor.dispose();
-          prediction.dispose();
-          const maxScore = Math.max(...Array.from(scores));
-          const bestIndex = Array.from(scores).indexOf(maxScore);
-          result = { class: classNames[bestIndex] || classNames[0], sentiment: classNames[bestIndex] || classNames[0], confidence: maxScore, tokens: trimmed.split(' ').length, latencyMs: 8 };
-        } else {
-          throw new Error(data.error || 'Inference failed');
+      if (activeConfig?.sandbox.inputType === 'image') {
+        const img = new window.Image();
+        img.src = inputVal;
+        await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(); });
+        let tensor = t.browser.fromPixels(img);
+        const imgShape = getInputShape(currentProject.domain);
+        if (imgShape.length >= 2) {
+          tensor = tensor.resizeBilinear([imgShape[0], imgShape[1]]).toFloat().div(255).expandDims(0);
         }
+        const prediction = model.predict(tensor);
+        tensor.dispose();
+        const scores = await prediction.data() as Float32Array;
+        prediction.dispose();
+        const maxScore = Math.max(...Array.from(scores));
+        const classIndex = Array.from(scores).indexOf(maxScore);
+        result = { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: Math.round(performance.now() - startTime) };
+      } else if (currentProject.domain === 'nlp') {
+        const trimmed = inputVal.trim();
+        const tokens = trimmed.split(/\s+/).map((w: string) => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
+        const seqLen = 100;
+        while (tokens.length < seqLen) tokens.push(0);
+        const inputTensor = t.tensor2d([tokens.slice(0, seqLen)], [1, seqLen]);
+        const prediction = model.predict(inputTensor);
+        const scores = await prediction.data() as Float32Array;
+        inputTensor.dispose();
+        prediction.dispose();
+        const maxScore = Math.max(...Array.from(scores));
+        const bestIndex = Array.from(scores).indexOf(maxScore);
+        result = { class: classNames[bestIndex] || classNames[0], sentiment: classNames[bestIndex] || classNames[0], confidence: maxScore, tokens: trimmed.split(' ').length, latencyMs: Math.round(performance.now() - startTime) };
+      } else {
+        throw new Error(`Client-side inference not supported for domain: ${currentProject.domain}`);
       }
+
       setInferenceResult(result);
     } catch (error) {
       console.error('Inference error:', error);
@@ -179,7 +161,9 @@ export const Sandbox: React.FC = () => {
 
     const { getTf } = await import('../../utils/model');
     const t = await getTf();
-    let cachedModel: any = null;
+    const { loadModel } = await import('../../utils/training');
+    const cachedModel = await loadModel(currentProject.id, selectedCheckpoint);
+    if (!cachedModel) throw new Error('No trained model found in browser storage.');
 
     const items: BulkItem[] = [];
 
@@ -195,11 +179,6 @@ export const Sandbox: React.FC = () => {
         const startTime = performance.now();
 
         if (activeConfig?.sandbox.inputType === 'image' && typeof file.rawContent === 'string') {
-          if (!cachedModel) {
-            const { loadModel } = await import('../../utils/training');
-            cachedModel = await loadModel(currentProject.id, selectedCheckpoint);
-          }
-          if (!cachedModel) throw new Error('No trained model found.');
           const img = new window.Image();
           img.src = file.rawContent;
           await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(); });
@@ -216,22 +195,23 @@ export const Sandbox: React.FC = () => {
           const classIndex = Array.from(scores).indexOf(maxScore);
           predClass = classNames[classIndex] || classNames[0];
           confidence = maxScore;
-        } else {
+        } else if (currentProject.domain === 'nlp') {
           const inputVal = typeof file.rawContent === 'string' ? file.rawContent : file.name;
-          const response = await fetch('/api/inference', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: inputVal,
-              projectId: currentProject.id,
-              domain: currentProject.domain,
-              epoch: selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint,
-            }),
-          });
-          const responseData = await response.json();
-          if (!responseData.success || !responseData.data) throw new Error(responseData.error || 'Inference failed');
-          predClass = responseData.data.class || responseData.data.sentiment || classNames[0];
-          confidence = responseData.data.confidence ?? 0.5;
+          const trimmed = inputVal.trim();
+          const tokens = trimmed.split(/\s+/).map((w: string) => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
+          const seqLen = 100;
+          while (tokens.length < seqLen) tokens.push(0);
+          const inputTensor = t.tensor2d([tokens.slice(0, seqLen)], [1, seqLen]);
+          const prediction = cachedModel.predict(inputTensor);
+          const scores = await prediction.data() as Float32Array;
+          inputTensor.dispose();
+          prediction.dispose();
+          const maxScore = Math.max(...Array.from(scores));
+          const bestIndex = Array.from(scores).indexOf(maxScore);
+          predClass = classNames[bestIndex] || classNames[0];
+          confidence = maxScore;
+        } else {
+          throw new Error(`Client-side bulk inference not supported for domain: ${currentProject.domain}`);
         }
 
         const latencyMs = Math.round(performance.now() - startTime);

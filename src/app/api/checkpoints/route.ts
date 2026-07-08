@@ -5,7 +5,7 @@ import StudioWorkspaceProject from '../../../models/Project';
 export async function POST(request: Request) {
   try {
     await dbConnect();
-    const { projectId, epoch, fileSize, metrics, modelArtifact } = await request.json();
+    const { projectId, epoch, fileSize } = await request.json();
 
     if (!projectId) {
       return NextResponse.json({ success: false, error: 'Project ID is required' }, { status: 400 });
@@ -26,26 +26,6 @@ export async function POST(request: Request) {
 
     if (!updatedProject) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
-    }
-
-    if (metrics) {
-      await StudioWorkspaceProject.findByIdAndUpdate(projectId, {
-        $push: { metricsHistory: { epoch, ...metrics } }
-      });
-    }
-
-    if (modelArtifact) {
-      const { weightData, ...rest } = modelArtifact;
-      await StudioWorkspaceProject.findByIdAndUpdate(projectId, {
-        $set: {
-          modelArtifact: {
-            ...rest,
-            savedAt: new Date().toISOString(),
-            weightDataLength: typeof weightData === 'string' ? weightData.length : 0,
-          },
-          latestModelCheckpointEpoch: epoch,
-        }
-      });
     }
 
     return NextResponse.json({ success: true, data: checkpoint });
