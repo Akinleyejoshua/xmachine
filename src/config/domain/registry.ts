@@ -291,9 +291,10 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       defaultMockResult: (input, classNames, seed) => {
         const rng = typeof seed === 'number' ? createRandom(seed) : null;
         const rand = rng ? () => rng() : Math.random;
-        const predictedSentiment = rand() > 0.4 ? 'Positive' : 'Negative';
+        const predictedClass = classNames[Math.floor(rand() * classNames.length)] || 'Positive';
         return {
-          sentiment: predictedSentiment,
+          class: predictedClass,
+          sentiment: predictedClass,
           confidence: 0.887,
           tokens: input.split(' ').length,
           latencyMs: 8

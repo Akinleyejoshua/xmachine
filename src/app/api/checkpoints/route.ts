@@ -16,30 +16,11 @@ export async function POST(request: Request) {
       timestamp: new Date().toLocaleTimeString(),
       fileSize: fileSize || 102400,
       checkpointUrl: `/api/checkpoints/download?projectId=${projectId}&epoch=${epoch}`,
-      modelArtifact: modelArtifact ? {
-        ...modelArtifact,
-        savedAt: new Date().toISOString(),
-      } : undefined
     };
-
-    const updatePayload: Record<string, unknown> = {
-      $push: { checkpoints: checkpoint },
-      ...(metrics ? { $push: { metricsHistory: { epoch, ...metrics } } } : {}),
-    };
-
-    if (modelArtifact) {
-      updatePayload.$set = {
-        modelArtifact: {
-          ...modelArtifact,
-          savedAt: new Date().toISOString(),
-        },
-        latestModelCheckpointEpoch: epoch,
-      };
-    }
 
     const updatedProject = await StudioWorkspaceProject.findByIdAndUpdate(
       projectId,
-      updatePayload,
+      { $push: { checkpoints: checkpoint } },
       { new: true }
     );
 
@@ -47,8 +28,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
+    if (metrics) {
+      await StudioWorkspaceProject.findByIdAndUpdate(projectId, {
+        $push: { metricsHistory: { epoch, ...metrics } }
+      });
+    }
+
+    if (modelArtifact) {
+      await StudioWorkspaceProject.findByIdAndUpdate(projectId, {
+        $set: {
+          modelArtifact: {
+            ...modelArtifact,
+            savedAt: new Date().toISOString(),
+          },
+          latestModelCheckpointEpoch: epoch,
+        }
+      });
+    }
+
     return NextResponse.json({ success: true, data: checkpoint });
   } catch (error: any) {
+    console.error('Checkpoint save error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

@@ -210,7 +210,7 @@ export const Sandbox: React.FC = () => {
           const responseData = await response.json();
           if (responseData.success && responseData.data) {
             const prediction = responseData.data;
-            predClass = prediction.class || classNames[0];
+            predClass = prediction.class || prediction.sentiment || classNames[0];
             confidence = prediction.confidence ?? 0.5;
           } else {
             predClass = classNames[absHash % classNames.length] || classNames[0];
