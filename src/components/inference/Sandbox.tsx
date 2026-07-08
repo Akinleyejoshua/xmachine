@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { usePipelineStore } from '../../store/usePipelineStore';
 import { detectFileClass } from '../etl/ETLCanvas';
 import { DOMAIN_CONFIGS } from '../../config/domain/registry';
@@ -54,6 +54,10 @@ export const Sandbox: React.FC = () => {
 
   // Bulk Analysis Tabs
   const [bulkSubTab, setBulkSubTab] = useState<'overview' | 'matrix' | 'report' | 'errors'>('overview');
+  const [bulkMaxSamples, setBulkMaxSamples] = useState(50);
+  const [bulkRandomize, setBulkRandomize] = useState(false);
+  const [bulkImportFiles, setBulkImportFiles] = useState<any[]>([]);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   if (!currentProject) return null;
 
@@ -77,73 +81,6 @@ export const Sandbox: React.FC = () => {
     return (first?.config?.inputShape as number[]) || (domain === 'object-detection' ? [416, 416, 3] : [224, 224, 3]);
   };
 
-  const runClientInference = async (model: any): Promise<any> => {
-    const t = await import('../../utils/model').then(m => m.getTf());
-    
-    if (activeConfig?.sandbox.inputType === 'image' && imagePreview) {
-      const img = new window.Image();
-      img.src = imagePreview;
-      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
-      let tensor = t.browser.fromPixels(img);
-      const shape = getInputShape(currentProject.domain);
-      if (shape.length >= 2) {
-        tensor = tensor.resizeBilinear([shape[0], shape[1]]).toFloat().div(255).expandDims(0);
-      }
-      const prediction = model.predict(tensor);
-      tensor.dispose();
-      const scores = await prediction.data() as Float32Array;
-      prediction.dispose();
-
-      if (currentProject.domain === 'object-detection') {
-        const bbox = Array.from(scores).map(val => Math.min(Math.max(val * 100, 0), 100)) as [number, number, number, number];
-        const mainClass = classNames[Math.floor(bbox[0] + bbox[1]) % classNames.length] || classNames[0];
-        const secondaryClass = classNames[Math.floor(bbox[2] + bbox[3]) % classNames.length] || classNames[1] || classNames[0];
-        return {
-          class: mainClass,
-          confidence: 0.85 + (bbox[0] % 15) / 100,
-          latencyMs: 25,
-          boundingBoxes: [
-            { label: mainClass, bbox: [bbox[0] * 0.5, bbox[1] * 0.5, bbox[2] * 0.5 + 20, bbox[3] * 0.5 + 20] },
-            { label: secondaryClass, bbox: [bbox[2] * 0.4 + 10, bbox[3] * 0.4 + 10, bbox[0] * 0.4 + 15, bbox[1] * 0.4 + 15] }
-          ]
-        };
-      } else {
-        const maxScore = Math.max(...Array.from(scores));
-        const classIndex = Array.from(scores).indexOf(maxScore);
-        return { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: 14 };
-      }
-    }
-    
-    if (activeConfig?.sandbox.inputType === 'text' && currentProject.domain !== 'llm-finetuning' && textVal.trim()) {
-      const seqLen = getInputShape(currentProject.domain)[0] || 100;
-      const tokens = textVal.split(/\s+/).map(w => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
-      while (tokens.length < seqLen) tokens.push(0);
-      const inputTensor = t.tensor2d([tokens.slice(0, seqLen)], [1, seqLen]);
-      const prediction = model.predict(inputTensor);
-      inputTensor.dispose();
-      const scores = await prediction.data() as Float32Array;
-      prediction.dispose();
-      const maxScore = Math.max(...Array.from(scores));
-      const classIndex = Array.from(scores).indexOf(maxScore);
-      return { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: 8 };
-    }
-    
-    if (currentProject.domain === 'llm-finetuning') {
-      const { generateLocalResponse } = await import('../../utils/inference');
-      const responseText = await generateLocalResponse(textVal, currentProject.id, selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint);
-      const tokenCount = responseText.split(/\s+/).length;
-      const perplexity = parseFloat((1.2 + Math.random() * 0.15).toFixed(2));
-      return {
-        text: responseText,
-        perplexity,
-        tokens: tokenCount,
-        latencyMs: 35
-      };
-    }
-    
-    return null;
-  };
-
   const handlePredict = async () => {
     setInferenceActive(true);
 
@@ -152,24 +89,6 @@ export const Sandbox: React.FC = () => {
       if (!inputVal) {
         setInferenceActive(false);
         return;
-      }
-
-      // Try client-side inference with real TF.js model first
-      if (currentProject.domain !== 'gans' && currentProject.domain !== 'time-series-forecasting') {
-        try {
-          const { loadModel } = await import('../../utils/training');
-          const model = await loadModel(currentProject.id, selectedCheckpoint);
-          if (model) {
-            const result = await runClientInference(model);
-            if (result) {
-              setInferenceResult(result);
-              setInferenceActive(false);
-              return;
-            }
-          }
-        } catch (e) {
-          console.warn('Client inference failed, falling back to API:', e);
-        }
       }
 
       // Call the inference API
@@ -206,15 +125,29 @@ export const Sandbox: React.FC = () => {
     setBulkActive(true);
     setBulkResults(null);
 
-    const filesToEvaluate = etl.files.length > 0 ? etl.files : [
-      { id: '1', name: 'cat_sample_01.jpg', size: 1024, type: 'image' as const },
-      { id: '2', name: 'dog_sample_02.jpg', size: 1024, type: 'image' as const },
-      { id: '3', name: 'bird_sample_03.jpg', size: 1024, type: 'image' as const },
-      { id: '4', name: 'cat_sample_04.jpg', size: 1024, type: 'image' as const },
-      { id: '5', name: 'dog_sample_05.jpg', size: 1024, type: 'image' as const },
-      { id: '6', name: 'bird_sample_06.jpg', size: 1024, type: 'image' as const },
-      { id: '7', name: 'cat_sample_07.jpg', size: 1024, type: 'image' as const },
-    ];
+    let filesToEvaluate = bulkImportFiles.length > 0
+      ? bulkImportFiles
+      : (etl.files.length > 0 ? etl.files : [
+          { id: '1', name: 'cat_sample_01.jpg', size: 1024, type: 'image' as const },
+          { id: '2', name: 'dog_sample_02.jpg', size: 1024, type: 'image' as const },
+          { id: '3', name: 'bird_sample_03.jpg', size: 1024, type: 'image' as const },
+          { id: '4', name: 'cat_sample_04.jpg', size: 1024, type: 'image' as const },
+          { id: '5', name: 'dog_sample_05.jpg', size: 1024, type: 'image' as const },
+          { id: '6', name: 'bird_sample_06.jpg', size: 1024, type: 'image' as const },
+          { id: '7', name: 'cat_sample_07.jpg', size: 1024, type: 'image' as const },
+        ]);
+
+    if (bulkRandomize) {
+      filesToEvaluate = [...filesToEvaluate].sort(() => Math.random() - 0.5);
+    }
+
+    if (filesToEvaluate.length > bulkMaxSamples) {
+      filesToEvaluate = filesToEvaluate.slice(0, bulkMaxSamples);
+    }
+
+    const { getTf } = await import('../../utils/model');
+    const t = await getTf();
+    let cachedModel: any = null;
 
     const items: BulkItem[] = [];
 
@@ -233,41 +166,67 @@ export const Sandbox: React.FC = () => {
       }
 
       try {
-        const inputVal = activeConfig?.sandbox.inputType === 'image' && typeof file.rawContent === 'string'
-          ? file.rawContent
-          : (typeof file.rawContent === 'string' ? file.rawContent : file.name);
+        let predClass: string;
+        let confidence: number;
 
-        const response = await fetch('/api/inference', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: inputVal,
-            projectId: currentProject.id,
-            domain: currentProject.domain,
-            epoch: selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint,
-          }),
-        });
-
-        const responseData = await response.json();
-
-        if (responseData.success && responseData.data) {
-          const prediction = responseData.data;
-          const predClass = prediction.class || classNames[Math.floor(Math.random() * classNames.length)];
-          const isCorrect = predClass === trueClass;
-          items.push({
-            name: file.name,
-            trueClass,
-            predClass,
-            confidence: prediction.confidence ?? 0.5,
-            latencyMs: prediction.latencyMs ?? Math.floor(8 + (absHash % 12)),
-            correct: isCorrect
-          });
+        if (activeConfig?.sandbox.inputType === 'image' && typeof file.rawContent === 'string') {
+          if (!cachedModel) {
+            const { loadModel } = await import('../../utils/training');
+            cachedModel = await loadModel(currentProject.id, selectedCheckpoint);
+          }
+          if (cachedModel) {
+            const img = new window.Image();
+            img.src = file.rawContent;
+            await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(); });
+            let tensor = t.browser.fromPixels(img);
+            const imgShape = getInputShape(currentProject.domain);
+            if (imgShape.length >= 2) {
+              tensor = tensor.resizeBilinear([imgShape[0], imgShape[1]]).toFloat().div(255).expandDims(0);
+            }
+            const prediction = cachedModel.predict(tensor);
+            tensor.dispose();
+            const scores = await prediction.data() as Float32Array;
+            prediction.dispose();
+            const maxScore = Math.max(...Array.from(scores));
+            const classIndex = Array.from(scores).indexOf(maxScore);
+            predClass = classNames[classIndex] || classNames[0];
+            confidence = maxScore;
+          } else {
+            predClass = classNames[absHash % classNames.length] || classNames[0];
+            confidence = 0.5;
+          }
         } else {
-          const mock = activeConfig?.sandbox.bulkMockResult(file.name, classNames, absHash);
-          mock.trueClass = trueClass;
-          mock.correct = mock.predClass === trueClass;
-          items.push(mock);
+          const inputVal = typeof file.rawContent === 'string' ? file.rawContent : file.name;
+          const response = await fetch('/api/inference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: inputVal,
+              projectId: currentProject.id,
+              domain: currentProject.domain,
+              epoch: selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint,
+            }),
+          });
+          const responseData = await response.json();
+          if (responseData.success && responseData.data) {
+            const prediction = responseData.data;
+            predClass = prediction.class || classNames[0];
+            confidence = prediction.confidence ?? 0.5;
+          } else {
+            predClass = classNames[absHash % classNames.length] || classNames[0];
+            confidence = 0.5;
+          }
         }
+
+        const isCorrect = predClass === trueClass;
+        items.push({
+          name: file.name,
+          trueClass,
+          predClass,
+          confidence,
+          latencyMs: Math.floor(8 + (absHash % 12)),
+          correct: isCorrect
+        });
       } catch {
         const mock = activeConfig?.sandbox.bulkMockResult(file.name, classNames, absHash);
         mock.trueClass = trueClass;
@@ -819,31 +778,96 @@ export const Sandbox: React.FC = () => {
         <div className="space-y-6 text-left">
           
           {/* Run Panel */}
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white dark:bg-neutral-950 p-6 rounded-xl border border-neutral-100 dark:border-neutral-900 shadow-sm">
-            <div>
-              <h4 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">Batch Workload Evaluation</h4>
-              <p className="text-xs text-neutral-600 dark:text-neutral-300">
-                Run batch test vectors on all ingested pipeline files ({etl.files.length > 0 ? etl.files.length : 'mock test dataset'} items total) to output classification metrics.
-              </p>
+          <div className="bg-white dark:bg-neutral-950 p-6 rounded-xl border border-neutral-100 dark:border-neutral-900 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+              <div>
+                <h4 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1.5">Batch Workload Evaluation</h4>
+                <p className="text-xs text-neutral-600 dark:text-neutral-300">
+                  Run batch test vectors on {bulkImportFiles.length > 0 ? 'imported' : 'ingested pipeline'} files ({bulkImportFiles.length > 0 ? bulkImportFiles.length : etl.files.length > 0 ? etl.files.length : 'mock test dataset'} items total) to output classification metrics.
+                </p>
+              </div>
+              
+              <button
+                onClick={handleBulkEvaluate}
+                disabled={bulkActive}
+                className="px-5 py-2.5 bg-royalblue-600 hover:bg-royalblue-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-2 text-xs font-bold transition-all shadow-sm shrink-0"
+              >
+                {bulkActive ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Evaluating Dataset...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3.5 h-3.5" />
+                    <span>Run Batch Evaluation</span>
+                  </>
+                )}
+              </button>
             </div>
-            
-            <button
-              onClick={handleBulkEvaluate}
-              disabled={bulkActive}
-              className="px-5 py-2.5 bg-royalblue-600 hover:bg-royalblue-500 disabled:opacity-50 text-white rounded-xl flex items-center justify-center gap-2 text-xs font-bold transition-all shadow-sm shrink-0"
-            >
-              {bulkActive ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Evaluating Dataset...</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5" />
-                  <span>Run Batch Evaluation</span>
-                </>
+
+            <div className="h-px bg-neutral-100 dark:bg-neutral-900" />
+
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-[10px] font-semibold text-neutral-500">Max Samples:</label>
+                <input
+                  type="number"
+                  value={bulkMaxSamples}
+                  onChange={e => setBulkMaxSamples(Math.max(1, parseInt(e.target.value) || 50))}
+                  className="w-16 bg-neutral-50 dark:bg-neutral-900 rounded border border-neutral-200 dark:border-neutral-800 px-2 py-1 text-xs text-center focus:outline-none"
+                  min={1}
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bulkRandomize}
+                  onChange={e => setBulkRandomize(e.target.checked)}
+                  className="accent-royalblue-500"
+                />
+                <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">Randomize order</span>
+              </label>
+              <input
+                ref={bulkFileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.txt,.csv,.json"
+                onChange={async e => {
+                  if (!e.target.files?.length) return;
+                  const files = Array.from(e.target.files);
+                  const readPromises = files.map(async f => {
+                    const type = f.type.includes('image') ? 'image' as const : 'txt' as const;
+                    const rawContent = await new Promise<string>(resolve => {
+                      const reader = new FileReader();
+                      reader.onload = () => resolve(reader.result as string);
+                      if (type === 'image') reader.readAsDataURL(f);
+                      else reader.readAsText(f);
+                    });
+                    return { id: Math.random().toString(36).slice(2), name: f.name, size: f.size, type, rawContent };
+                  });
+                  const imported = await Promise.all(readPromises);
+                  setBulkImportFiles(prev => [...prev, ...imported]);
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+              <button
+                onClick={() => bulkFileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-900 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-xl text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-all"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Import files for inference
+              </button>
+              {bulkImportFiles.length > 0 && (
+                <button
+                  onClick={() => setBulkImportFiles([])}
+                  className="text-[11px] font-semibold text-red-500 hover:text-red-400"
+                >
+                  Clear imported ({bulkImportFiles.length})
+                </button>
               )}
-            </button>
+            </div>
           </div>
 
           {bulkResults && statistics && (
