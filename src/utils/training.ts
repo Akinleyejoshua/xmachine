@@ -93,16 +93,27 @@ export async function generateSyntheticTextBatch(
   seqLen: number,
   classCount: number,
   batchSize: number,
-  seed: number
+  seed: number,
+  isLLM?: boolean
 ): Promise<{ xs: any; ys: any }> {
   const t = await getTf();
   const rng = createRandom(seed);
-  const xs = t.tensor2d(
-    Array.from({ length: batchSize }, () =>
-      Array.from({ length: seqLen }, () => Math.floor(rng() * vocabSize))
-    ),
-    [batchSize, seqLen]
+  const tokens = Array.from({ length: batchSize }, () =>
+    Array.from({ length: seqLen + 1 }, () => Math.floor(rng() * vocabSize))
   );
+
+  if (isLLM) {
+    const xs = t.tensor2d(tokens.map(row => row.slice(0, seqLen)), [batchSize, seqLen]);
+    const nextTokens = tokens.map(row => {
+      const seq = row.slice(0, seqLen);
+      const next = row[seqLen] ?? 0;
+      return [next];
+    });
+    const ys = t.oneHot(t.tensor1d(nextTokens.flat(), 'int32'), vocabSize);
+    return { xs, ys };
+  }
+
+  const xs = t.tensor2d(tokens.map(row => row.slice(0, seqLen)), [batchSize, seqLen]);
   const labels = deriveLabelsFromInput(xs, classCount);
   const ys = t.oneHot(t.tensor1d(labels, 'int32'), classCount);
   return { xs, ys };

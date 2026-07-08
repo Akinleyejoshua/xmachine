@@ -2,7 +2,73 @@ import { loadModel } from './training';
 
 const MODEL_CACHE = new Map<string, unknown>();
 
-export async function generateLocalResponse(prompt: string, projectId: string, epoch?: number): Promise<string> {
+const VOCAB_SIZE = 5000;
+
+const SPECIAL_TOKENS: Record<string, number> = {
+  '<pad>': 0,
+  '<bos>': 1,
+  '<eos>': 2,
+  '<unk>': 3,
+};
+
+const ID_TO_CHAR = new Map<number, string>();
+for (let i = 0; i < 256; i++) {
+  ID_TO_CHAR.set(i + 4, String.fromCharCode(i));
+}
+
+function tokenize(text: string): number[] {
+  const chars = text.split('');
+  const tokens: number[] = [SPECIAL_TOKENS['<bos>']];
+  for (const ch of chars) {
+    const code = ch.charCodeAt(0);
+    const id = 4 + (code % 256);
+    tokens.push(Math.min(id, VOCAB_SIZE - 1));
+  }
+  tokens.push(SPECIAL_TOKENS['<eos>']);
+  return tokens;
+}
+
+function detokenize(ids: number[]): string {
+  let text = '';
+  for (const id of ids) {
+    if (id === SPECIAL_TOKENS['<bos>']) continue;
+    if (id === SPECIAL_TOKENS['<eos>']) break;
+    if (id === SPECIAL_TOKENS['<pad>']) continue;
+    const ch = ID_TO_CHAR.get(id);
+    if (ch) text += ch;
+  }
+  return text;
+}
+
+function sampleFromLogits(logits: Float32Array, temperature: number): number {
+  const scores = Array.from(logits);
+  const expScores = scores.map(s => Math.exp((s - Math.max(...scores)) / Math.max(temperature, 0.01)));
+  const sumExp = expScores.reduce((a, b) => a + b, 0);
+  const probs = expScores.map(s => s / sumExp);
+  let r = Math.random();
+  for (let i = 0; i < probs.length; i++) {
+    r -= probs[i];
+    if (r <= 0) return i;
+  }
+  return probs.length - 1;
+}
+
+function topKFilter(logits: Float32Array, k: number): Float32Array {
+  const values = Array.from(logits);
+  const sorted = [...values].sort((a, b) => b - a);
+  const threshold = sorted[Math.min(k, sorted.length) - 1];
+  const filtered = values.map(v => (v >= threshold ? v : -Infinity));
+  return new Float32Array(filtered);
+}
+
+export async function generateLocalResponse(
+  prompt: string,
+  projectId: string,
+  epoch?: number,
+  temperature = 0.8,
+  maxNewTokens = 100,
+  topK = 40
+): Promise<string> {
   const trimmed = prompt.trim();
   if (!trimmed) {
     return 'Please enter a prompt to generate a response.';
@@ -11,34 +77,46 @@ export async function generateLocalResponse(prompt: string, projectId: string, e
   try {
     const model = (await loadProjectModel(projectId, epoch)) as any;
     if (model && typeof model.predict === 'function') {
-      const tokens = trimmed.split(/\s+/).map(w => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
-      const seqLen = 100;
-      while (tokens.length < seqLen) tokens.push(0);
       const { getTf } = await import('./model');
       const t = await getTf();
-      const inputTensor = t.tensor2d([tokens.slice(0, seqLen)], [1, seqLen]);
-      const prediction = model.predict(inputTensor);
-      const scores = await prediction.data() as Float32Array;
-      inputTensor.dispose();
-      prediction.dispose();
 
-      const topValues = Array.from(scores)
-        .map((v, i) => ({ value: v, index: i }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 10);
+      let inputIds = tokenize(trimmed);
+      const seqLen = 100;
+      while (inputIds.length < seqLen) inputIds.push(SPECIAL_TOKENS['<pad>']);
+      inputIds = inputIds.slice(0, seqLen);
 
-      const generatedTokens = topValues.map(v => v.index);
-      const generatedText = generatedTokens.map(t => String.fromCharCode(32 + (t % 95))).join('');
+      const outputIds: number[] = [];
 
-      const response = `[Generated from prompt: "${trimmed}"]\n${generatedText}`;
+      for (let step = 0; step < maxNewTokens; step++) {
+        const inputTensor = t.tensor2d([inputIds], [1, seqLen]);
+        const prediction = model.predict(inputTensor);
+        const logits = await prediction.data() as Float32Array;
+        inputTensor.dispose();
+        prediction.dispose();
 
-      return response;
+        const lastStepLogits = new Float32Array(logits.slice(-VOCAB_SIZE));
+        const filtered = topKFilter(lastStepLogits, topK);
+        const nextToken = sampleFromLogits(filtered, temperature);
+
+        if (nextToken === SPECIAL_TOKENS['<eos>']) break;
+
+        outputIds.push(nextToken);
+        inputIds = [...inputIds.slice(1), nextToken];
+      }
+
+      const generatedText = detokenize(outputIds);
+
+      if (generatedText.trim()) {
+        return generatedText;
+      }
+
+      return `Generated ${outputIds.length} tokens after processing "${trimmed}". The model is early in training — continue training for better results.`;
     }
   } catch (error) {
     console.error('Model inference failed:', error);
   }
 
-  return `[Generated from prompt: "${trimmed}"]\nNo fully trained checkpoint weights were loaded from the database. Please start/complete training to activate real-time weight adaptation.`;
+  return `Your query "${trimmed}" could not be processed because no trained checkpoint was found. Please train the model first.`;
 }
 
 export async function runServerInference(

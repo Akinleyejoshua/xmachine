@@ -16,6 +16,8 @@ export interface BuildModelOptions {
   optimizer?: string;
   learningRate?: number;
   loss?: string;
+  domain?: string;
+  vocabSize?: number;
 }
 
 export async function buildModel(options: BuildModelOptions): Promise<any> {
@@ -29,7 +31,9 @@ export async function buildModel(options: BuildModelOptions): Promise<any> {
     model.add(t.layers.inputLayer({ inputShape: modelLayers[0].config.inputShape }));
   }
 
-  if (inputShape && inputShape.length === 1 && inputShape[0] === 100 && modelLayers[0]?.type === 'dense') {
+  const isLLM = options.domain === 'llm-finetuning';
+
+  if (inputShape && inputShape.length === 1 && inputShape[0] === 100 && modelLayers[0]?.type === 'dense' && !isLLM) {
     model.add(t.layers.embedding({ inputDim: 32000, outputDim: 64, inputLength: 100 }));
     model.add(t.layers.flatten({}));
   }
@@ -38,10 +42,15 @@ export async function buildModel(options: BuildModelOptions): Promise<any> {
     model.add(createLayer(t, layer));
   }
 
-  const lastLayer = modelLayers[modelLayers.length - 1];
-  if (!lastLayer || typeof lastLayer.config.units !== 'number' || lastLayer.config.units !== classCount) {
-    const activation = classCount > 2 ? 'softmax' : 'sigmoid';
-    model.add(t.layers.dense({ units: classCount, activation }));
+  if (isLLM) {
+    const vocabSize = options.vocabSize || 5000;
+    model.add(t.layers.dense({ units: vocabSize, activation: 'softmax' }));
+  } else {
+    const lastLayer = modelLayers[modelLayers.length - 1];
+    if (!lastLayer || typeof lastLayer.config.units !== 'number' || lastLayer.config.units !== classCount) {
+      const activation = classCount > 2 ? 'softmax' : 'sigmoid';
+      model.add(t.layers.dense({ units: classCount, activation }));
+    }
   }
 
   const optimizerFn = buildOptimizer(t, optimizer, learningRate);

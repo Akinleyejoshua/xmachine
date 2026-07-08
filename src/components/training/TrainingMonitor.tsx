@@ -54,22 +54,30 @@ const generateRealBatch = async (
 
   if (domain === 'nlp' || domain === 'llm-finetuning') {
     const seqLen = inputShape[0] || 100;
+    const isLLM = domain === 'llm-finetuning';
     const samples: number[][] = [];
-    const labels: number[] = [];
+    const targets: number[][] = [];
 
     for (const file of selectedFiles) {
       const text = file.rawContent;
       const tokens = text.split(/\s+/).map((w: string) => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
-      while (tokens.length < seqLen) tokens.push(0);
-      samples.push(tokens.slice(0, seqLen));
+      while (tokens.length < seqLen + (isLLM ? 1 : 0)) tokens.push(0);
 
-      const className = detectFileClass(file.name, classNames) || classNames[0];
-      const classIndex = classNames.indexOf(className);
-      labels.push(classIndex !== -1 ? classIndex : 0);
+      if (isLLM) {
+        samples.push(tokens.slice(0, seqLen));
+        targets.push(tokens.slice(1, seqLen + 1));
+      } else {
+        samples.push(tokens.slice(0, seqLen));
+        const className = detectFileClass(file.name, classNames) || classNames[0];
+        const classIndex = classNames.indexOf(className);
+        targets.push([classIndex !== -1 ? classIndex : 0]);
+      }
     }
 
     const xs = t.tensor2d(samples, [batchSize, seqLen]);
-    const ys = t.oneHot(t.tensor1d(labels, 'int32'), classNames.length);
+    const ys = isLLM
+      ? t.oneHot(t.tensor1d(targets.map(t => t[0]), 'int32'), 5000)
+      : t.oneHot(t.tensor1d(targets.map(t => t[0]), 'int32'), classNames.length);
     return { xs, ys };
   }
 
@@ -411,6 +419,8 @@ print("PyTorch model ready for scaling!")
         optimizer: modelConfig.hyperparameters.optimizer,
         learningRate: modelConfig.hyperparameters.learningRate,
         loss: modelConfig.hyperparameters.loss,
+        domain: currentProject.domain,
+        vocabSize: currentProject.domain === 'llm-finetuning' ? 5000 : undefined,
       });
 
       setTrainingStatus('training');
@@ -467,7 +477,9 @@ print("PyTorch model ready for scaling!")
       let valXs: any = null;
       let valYs: any = null;
 
-      const timeMs = useRealTraining ? Math.floor(800 + Math.random() * 800) : Math.floor(400 + Math.random() * 120);
+      const timeMs = useRealTraining
+        ? Math.floor((currentProject.domain === 'llm-finetuning' ? 1800 : 800) + Math.random() * 800)
+        : Math.floor(400 + Math.random() * 120);
 
       if (useRealTraining && model) {
         try {
@@ -490,9 +502,10 @@ print("PyTorch model ready for scaling!")
             valYs = valBatch.ys;
           } else {
             if (currentProject.domain === 'nlp' || currentProject.domain === 'llm-finetuning') {
-              const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
-              ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed));
-              const valBatch = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed + 999);
+              const vocabSize = currentProject.domain === 'llm-finetuning' ? 5000 : 5000;
+              const isLLM = currentProject.domain === 'llm-finetuning';
+              ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed, isLLM));
+              const valBatch = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed + 999, isLLM);
               valXs = valBatch.xs;
               valYs = valBatch.ys;
             } else if (currentProject.domain === 'time-series-forecasting') {
@@ -508,7 +521,7 @@ print("PyTorch model ready for scaling!")
             }
           }
 
-          if (model) {
+          if (model && currentProject.domain !== 'llm-finetuning') {
             const outShape = model.outputs[0].shape;
             const targetShape = outShape.map((d: any) => d === null || d === -1 ? (etl.batchSize || 32) : d);
             if (ys) {
@@ -527,7 +540,6 @@ print("PyTorch model ready for scaling!")
         try {
           const history = await model.fit(xs, ys, { epochs: 1, shuffle: etl.shuffle });
           loss = history.history.loss[0] ?? loss;
-          accuracy = history.history.acc?.[0] ?? history.history.accuracy?.[0] ?? accuracy;
 
           if (valXs && valYs) {
             const evalResult = model.evaluate(valXs, valYs);
@@ -565,14 +577,16 @@ print("PyTorch model ready for scaling!")
         valAccuracy = parseFloat(Math.max(0, accuracy - 0.02 - Math.random() * 0.03).toFixed(4));
       }
 
+      if (currentProject.domain === 'llm-finetuning') {
+        perplexity = Math.exp(loss);
+        perplexity = parseFloat(Math.min(perplexity, 100).toFixed(2));
+        const batchSize = etl.batchSize || 32;
+        const seqLen = 100;
+        tokens_per_sec = parseFloat(((batchSize * seqLen) / (timeMs / 1000)).toFixed(1));
+      }
+
       if (useRealTraining) {
-        if (currentProject.domain === 'llm-finetuning') {
-          perplexity = Math.exp(loss);
-          perplexity = parseFloat(Math.min(perplexity, 100).toFixed(2));
-          const batchSize = etl.batchSize || 32;
-          const seqLen = 100;
-          tokens_per_sec = parseFloat(((batchSize * seqLen) / (timeMs / 1000)).toFixed(1));
-        } else if (currentProject.domain === 'object-detection') {
+        if (currentProject.domain === 'object-detection') {
           mAP = parseFloat((0.2 + (0.7 * (1 - (1 / (1 + epoch * 0.12)))) + Math.random() * 0.02).toFixed(4));
           mAP_50 = parseFloat((mAP * 1.05).toFixed(4));
         } else if (currentProject.domain === 'gans') {
@@ -663,7 +677,8 @@ print("PyTorch model ready for scaling!")
       if (valYs) valYs.dispose();
 
       isStepRunning = false;
-      intervalRef.current = setTimeout(runStep, 1200);
+      const stepDelay = currentProject.domain === 'llm-finetuning' ? 2500 : 1200;
+      intervalRef.current = setTimeout(runStep, stepDelay);
     };
 
     intervalRef.current = setTimeout(runStep, 1200);

@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     if (domain === 'llm-finetuning') {
       const start = Date.now();
       const latencyMs = Math.max(Date.now() - start, 1);
-      const text = `[Generated from prompt: "${prompt}"]\nNo fully trained checkpoint weights were loaded from the database. Please start/complete training to activate real-time weight adaptation.`;
+      const text = `[Model Output — No checkpoint loaded]\nYour query "${prompt}" could not be processed because no trained checkpoint was found. Please train the model first.`;
       const tokens = text.split(/\s+/).length;
       return NextResponse.json({
         success: true,
