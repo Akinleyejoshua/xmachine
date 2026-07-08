@@ -35,11 +35,13 @@ export async function POST(request: Request) {
     }
 
     if (modelArtifact) {
+      const { weightData, ...rest } = modelArtifact;
       await StudioWorkspaceProject.findByIdAndUpdate(projectId, {
         $set: {
           modelArtifact: {
-            ...modelArtifact,
+            ...rest,
             savedAt: new Date().toISOString(),
+            weightDataLength: typeof weightData === 'string' ? weightData.length : 0,
           },
           latestModelCheckpointEpoch: epoch,
         }

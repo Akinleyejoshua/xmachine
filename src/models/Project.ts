@@ -81,7 +81,8 @@ const ProjectSchema: Schema = new Schema(
       epoch: Number,
       topology: Schema.Types.Mixed,
       weightSpecs: [Schema.Types.Mixed],
-      weightData: String,
+      weightData: { type: String, default: '' },
+      weightDataLength: { type: Number, default: 0 },
       savedAt: String
     },
     latestModelCheckpointEpoch: { type: Number, default: null }
