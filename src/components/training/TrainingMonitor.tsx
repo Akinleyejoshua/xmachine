@@ -31,11 +31,14 @@ const generateRealBatch = async (
     for (const file of selectedFiles) {
       const img = new window.Image();
       img.src = file.rawContent;
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-      });
-      
+      await Promise.race([
+        new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('Image load failed'));
+        }),
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Image load timeout')), 10000))
+      ]);
+
       let tensor = t.browser.fromPixels(img);
       tensor = tensor.resizeBilinear([height, width]).toFloat().div(255);
       images.push(tensor);
@@ -540,6 +543,7 @@ print("PyTorch model ready for scaling!")
         try {
           const history = await model.fit(xs, ys, { epochs: 1, shuffle: etl.shuffle });
           loss = history.history.loss[0] ?? loss;
+          accuracy = history.history.acc?.[0] ?? history.history.accuracy?.[0] ?? accuracy;
 
           if (valXs && valYs) {
             const evalResult = model.evaluate(valXs, valYs);
@@ -677,7 +681,10 @@ print("PyTorch model ready for scaling!")
       if (valYs) valYs.dispose();
 
       isStepRunning = false;
-      const stepDelay = currentProject.domain === 'llm-finetuning' ? 2500 : 1200;
+      const hasRealData = etl.files.some(f => f.rawContent);
+      const stepDelay = currentProject.domain === 'llm-finetuning' ? 2500
+        : (hasRealData && (currentProject.domain === 'cv-classification' || currentProject.domain === 'object-detection')) ? 4000
+        : 1200;
       intervalRef.current = setTimeout(runStep, stepDelay);
     };
 
