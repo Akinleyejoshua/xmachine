@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePipelineStore } from '../../store/usePipelineStore';
 import { detectFileClass } from '../etl/ETLCanvas';
 import { DOMAIN_CONFIGS } from '../../config/domain/registry';
@@ -57,7 +57,7 @@ export const Sandbox: React.FC = () => {
   const [bulkMaxSamples, setBulkMaxSamples] = useState(50);
   const [bulkRandomize, setBulkRandomize] = useState(false);
   const [bulkImportFiles, setBulkImportFiles] = useState<any[]>([]);
-  const bulkFileInputRef = useRef<HTMLInputElement>(null);
+  
 
   if (!currentProject) return null;
 
@@ -829,7 +829,6 @@ export const Sandbox: React.FC = () => {
                 <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">Randomize order</span>
               </label>
               <input
-                ref={bulkFileInputRef}
                 type="file"
                 multiple
                 accept="image/*,.txt,.csv,.json"
@@ -852,12 +851,43 @@ export const Sandbox: React.FC = () => {
                 }}
                 className="hidden"
               />
+              <input
+                type="file"
+                multiple
+                {...({ webkitdirectory: '' } as any)}
+                onChange={async e => {
+                  if (!e.target.files?.length) return;
+                  const files = Array.from(e.target.files);
+                  const readPromises = files.map(async f => {
+                    const type = f.type.includes('image') ? 'image' as const : 'txt' as const;
+                    const rawContent = await new Promise<string>(resolve => {
+                      const reader = new FileReader();
+                      reader.onload = () => resolve(reader.result as string);
+                      if (type === 'image') reader.readAsDataURL(f);
+                      else reader.readAsText(f);
+                    });
+                    return { id: Math.random().toString(36).slice(2), name: f.webkitRelativePath || f.name, size: f.size, type, rawContent };
+                  });
+                  const imported = await Promise.all(readPromises);
+                  setBulkImportFiles(prev => [...prev, ...imported]);
+                  e.target.value = '';
+                }}
+                className="hidden"
+                id="bulk-folder-input"
+              />
               <button
-                onClick={() => bulkFileInputRef.current?.click()}
+                onClick={() => (document.querySelector<HTMLInputElement>('input[type="file"]:not([webkitdirectory])')?.click())}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-900 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-xl text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-all"
               >
                 <Upload className="w-3.5 h-3.5" />
-                Import files for inference
+                Import files
+              </button>
+              <button
+                onClick={() => document.getElementById('bulk-folder-input')?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 dark:bg-neutral-900 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-xl text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-all"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Import folder
               </button>
               {bulkImportFiles.length > 0 && (
                 <button
