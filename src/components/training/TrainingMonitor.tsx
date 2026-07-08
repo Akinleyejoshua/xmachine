@@ -1148,7 +1148,7 @@ print("PyTorch model ready for scaling!")
                     {yLabels.map((v, i) => {
                       const y = PT + (1 - v) * plotH;
                       return (
-                        <g key={i}>
+                        <g key={`ylabel-${i}`}>
                           <line
                             x1={PL} y1={y} x2={W - PR} y2={y}
                             stroke="#ffffff10" strokeWidth="1"
@@ -1167,7 +1167,7 @@ print("PyTorch model ready for scaling!")
                       const barW = Math.max(1.5, (plotW / n) / (mainMetrics.length + 1));
                       const x = PL + i * stepX;
                       return (
-                        <g key={i}>
+                        <g key={`bar-${i}`}>
                           {mainMetrics.map((met, idx) => {
                             const val = (m as any)[met.id] !== undefined ? ((m as any)[met.id] as number) : 0;
                             const maxVal = Math.max(...metricsHistory.map(h => ((h as any)[met.id] as number) || 0), 1.0);
@@ -1194,7 +1194,7 @@ print("PyTorch model ready for scaling!")
                     {chartType === 'scatter' && metricsHistory.map((m, i) => {
                       const mainMetrics = activeConfig.training.metrics.filter(met => met.isMain || met.id === 'loss');
                       return (
-                        <g key={i}>
+                        <g key={`scatter-${i}`}>
                           {mainMetrics.map(met => {
                             const { x, y } = getXY(i, met.id);
                             return (
@@ -1260,7 +1260,7 @@ print("PyTorch model ready for scaling!")
                       const { x, y } = getXY(i, mainMetric.id);
                       const val = (m as any)[mainMetric.id] !== undefined ? ((m as any)[mainMetric.id] as number) : 0;
                       return (
-                        <g key={i} className="group/dot">
+                        <g key={`dot-${i}`} className="group/dot">
                           <circle cx={x} cy={y} r="3" fill={getStrokeColor(mainMetric.color)} stroke="#0a0a0f" strokeWidth="1.5" className="cursor-pointer" />
                           <rect x={x - 22} y={y - 22} width="44" height="14" rx="3" fill="#1e1e2e" opacity="0" className="group-hover/dot:opacity-100 transition-opacity" />
                           <text x={x} y={y - 12} textAnchor="middle" fontSize="8.5" fill="#818cf8" fontFamily="monospace" fontWeight="bold" className="opacity-0 group-hover/dot:opacity-100 transition-opacity">
@@ -1295,7 +1295,7 @@ print("PyTorch model ready for scaling!")
                       </thead>
                       <tbody className="divide-y divide-neutral-100 dark:divide-neutral-900 font-mono">
                         {metricsHistory.map((m, idx) => (
-                          <tr key={idx} className="hover:bg-neutral-100 dark:hover:bg-neutral-850/60 transition-colors">
+                          <tr key={`metric-${(m as any).epoch || idx}`} className="hover:bg-neutral-100 dark:hover:bg-neutral-850/60 transition-colors">
                             <td className="py-2 pl-4 font-sans text-neutral-500 dark:text-neutral-400 text-[11px]">Ep {(m as any).epoch}</td>
                             {activeConfig.training.metrics.map(met => {
                               const val = (m as any)[met.id];
@@ -1327,7 +1327,7 @@ print("PyTorch model ready for scaling!")
               
               <div className="space-y-0.5">
                 {logs.map((log, i) => (
-                  <div key={i} className={
+                  <div key={`log-${i}-${log.slice(0, 20)}`} className={
                     log.includes('[SUCCESS]') ? 'text-emerald-400' 
                     : log.includes('[CHECKPOINT]') ? 'text-cyan-400'
                     : log.includes('[RESUME]') ? 'text-yellow-400'

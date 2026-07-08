@@ -334,7 +334,7 @@ export const ETLCanvas: React.FC = () => {
                 </form>
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {(etl.classNames || []).map((name, i) => (
-                    <span key={i} className="text-[9px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded font-mono">
+                    <span key={`action-${i}`} className="text-[9px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded font-mono">
                       {name}
                     </span>
                   ))}
