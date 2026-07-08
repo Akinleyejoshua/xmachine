@@ -13,13 +13,6 @@ export async function GET(request: Request) {
       if (!project) {
         return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
       }
-      // Strip rawContent from files to keep response small
-      if (project.etl?.files) {
-        project.etl.files = project.etl.files.map((f: any) => {
-          const { rawContent, ...meta } = f;
-          return meta;
-        });
-      }
       return NextResponse.json({ success: true, data: project });
     }
 
@@ -38,14 +31,6 @@ export async function POST(request: Request) {
   try {
     await dbConnect();
     const body = await request.json();
-    
-    // Strip rawContent from files before saving to MongoDB
-    if (body.etl?.files) {
-      body.etl.files = body.etl.files.map((f: any) => {
-        const { rawContent, ...meta } = f;
-        return meta;
-      });
-    }
     
     let project;
     if (body.id || body._id) {

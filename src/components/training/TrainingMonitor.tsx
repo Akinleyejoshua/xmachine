@@ -44,6 +44,8 @@ const generateRealBatch = async (
       labels.push(classIndex !== -1 ? classIndex : 0);
     }
 
+    console.log('[training] labels distribution:', labels.reduce((acc: Record<number,number>, l: number) => { acc[l] = (acc[l]||0)+1; return acc; }, {}), 'classNames:', classNames);
+
     const xs = t.stack(images);
     images.forEach(img => img.dispose());
 

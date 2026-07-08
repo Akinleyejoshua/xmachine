@@ -38,19 +38,25 @@ export async function buildModel(options: BuildModelOptions): Promise<any> {
     model.add(t.layers.flatten({}));
   }
 
-  for (const layer of modelLayers) {
-    model.add(createLayer(t, layer));
+  // Determine output units: use classCount, or the last layer's units if it matches
+  const lastLayer = modelLayers[modelLayers.length - 1];
+  const outputUnits = (lastLayer && typeof lastLayer.config.units === 'number' && lastLayer.config.units === classCount)
+    ? classCount : classCount;
+  const outputActivation = classCount > 2 ? 'softmax' : 'sigmoid';
+
+  for (let i = 0; i < modelLayers.length; i++) {
+    const layer = modelLayers[i];
+    // If this is the last dense layer and its units don't match, override
+    if (i === modelLayers.length - 1 && layer.type === 'dense' && typeof layer.config.units === 'number' && layer.config.units !== classCount) {
+      model.add(t.layers.dense({ ...layer.config, units: outputUnits, activation: outputActivation }));
+    } else {
+      model.add(createLayer(t, layer));
+    }
   }
 
-  if (isLLM) {
-    const vocabSize = options.vocabSize || 5000;
-    model.add(t.layers.dense({ units: vocabSize, activation: 'softmax' }));
-  } else {
-    const lastLayer = modelLayers[modelLayers.length - 1];
-    if (!lastLayer || typeof lastLayer.config.units !== 'number' || lastLayer.config.units !== classCount) {
-      const activation = classCount > 2 ? 'softmax' : 'sigmoid';
-      model.add(t.layers.dense({ units: classCount, activation }));
-    }
+  // If there are no layers or the last layer wasn't dense, add an output layer
+  if (modelLayers.length === 0 || lastLayer?.type !== 'dense') {
+    model.add(t.layers.dense({ units: outputUnits, activation: outputActivation }));
   }
 
   const optimizerFn = buildOptimizer(t, optimizer, learningRate);

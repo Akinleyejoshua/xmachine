@@ -199,12 +199,17 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
         // Restore file content from IndexedDB in background
         if (typeof window !== 'undefined' && project.etl?.files?.length > 0) {
           try {
-            const { restoreFileContents } = await import('../utils/fileStore');
+            const { restoreFileContents, saveAllFileContents } = await import('../utils/fileStore');
             const contentMap = await restoreFileContents(project.etl.files);
-            const files = project.etl.files.map((f: any) => ({
+const files = project.etl.files.map((f: any) => ({
               ...f,
               rawContent: contentMap.get(f.id) || f.rawContent,
             }));
+            // Save any rawContent from API response into IndexedDB for future use
+            const filesToSave = files.filter((f: any) => f.rawContent && !contentMap.has(f.id));
+            if (filesToSave.length > 0) {
+              await saveAllFileContents(filesToSave.map((f: any) => ({ id: f.id, rawContent: f.rawContent })));
+            }
             const state = usePipelineStore.getState();
             usePipelineStore.setState({ etl: { ...state.etl, files } });
           } catch (e) {
@@ -270,7 +275,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
       setWizardOpen: (open) => set({ wizardOpen: open }),
 
       addFiles: async (newFiles) => {
-        // Save file content to IndexedDB
+        // Save file content to IndexedDB for offline persistence
         if (typeof window !== 'undefined') {
           const { saveAllFileContents } = await import('../utils/fileStore');
           await saveAllFileContents(newFiles.map(f => ({ id: f.id, rawContent: typeof f.rawContent === 'string' ? f.rawContent : undefined })));
@@ -278,7 +283,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
         set((state) => ({
           etl: {
             ...state.etl,
-            files: [...state.etl.files, ...newFiles.map(({ rawContent, ...meta }) => meta)],
+            files: [...state.etl.files, ...newFiles],
           },
         }));
         await usePipelineStore.getState().saveProjectProgress();

@@ -114,8 +114,10 @@ export const Sandbox: React.FC = () => {
         tensor.dispose();
         const scores = await prediction.data() as Float32Array;
         prediction.dispose();
-        const maxScore = Math.max(...Array.from(scores));
-        const classIndex = Array.from(scores).indexOf(maxScore);
+        const scoresArr = Array.from(scores);
+        console.log('[inference] raw scores:', scoresArr, 'classNames:', classNames);
+        const maxScore = Math.max(...scoresArr);
+        const classIndex = scoresArr.indexOf(maxScore);
         result = { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: Math.round(performance.now() - startTime) };
       } else if (currentProject.domain === 'nlp') {
         const trimmed = inputVal.trim();
@@ -127,8 +129,10 @@ export const Sandbox: React.FC = () => {
         const scores = await prediction.data() as Float32Array;
         inputTensor.dispose();
         prediction.dispose();
-        const maxScore = Math.max(...Array.from(scores));
-        const bestIndex = Array.from(scores).indexOf(maxScore);
+        const scoresArr = Array.from(scores);
+        console.log('[inference] raw scores:', scoresArr, 'classNames:', classNames);
+        const maxScore = Math.max(...scoresArr);
+        const bestIndex = scoresArr.indexOf(maxScore);
         result = { class: classNames[bestIndex] || classNames[0], sentiment: classNames[bestIndex] || classNames[0], confidence: maxScore, tokens: trimmed.split(' ').length, latencyMs: Math.round(performance.now() - startTime) };
       } else {
         throw new Error(`Client-side inference not supported for domain: ${currentProject.domain}`);
@@ -191,8 +195,10 @@ export const Sandbox: React.FC = () => {
           tensor.dispose();
           const scores = await prediction.data() as Float32Array;
           prediction.dispose();
-          const maxScore = Math.max(...Array.from(scores));
-          const classIndex = Array.from(scores).indexOf(maxScore);
+          const scoresArr = Array.from(scores);
+          console.log('[bulk-inference] raw scores:', scoresArr, 'file:', file.name, 'trueClass:', trueClass);
+          const maxScore = Math.max(...scoresArr);
+          const classIndex = scoresArr.indexOf(maxScore);
           predClass = classNames[classIndex] || classNames[0];
           confidence = maxScore;
         } else if (currentProject.domain === 'nlp') {
