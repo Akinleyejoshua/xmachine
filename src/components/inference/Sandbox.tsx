@@ -142,11 +142,11 @@ export const Sandbox: React.FC = () => {
     
     if (currentProject.domain === 'llm-finetuning') {
       const { generateLocalResponse } = await import('../../utils/inference');
-      const text = await generateLocalResponse(textVal, currentProject.id, selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint);
-      const tokenCount = text.split(/\s+/).length + 4;
+      const responseText = await generateLocalResponse(textVal, currentProject.id, selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint);
+      const tokenCount = responseText.split(/\s+/).length;
       const perplexity = parseFloat((1.2 + Math.random() * 0.15).toFixed(2));
       return {
-        text,
+        text: responseText,
         perplexity,
         tokens: tokenCount,
         latencyMs: 35

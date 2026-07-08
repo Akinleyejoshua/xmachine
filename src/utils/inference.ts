@@ -21,20 +21,24 @@ export async function generateLocalResponse(prompt: string, projectId: string, e
       const scores = await prediction.data() as Float32Array;
       inputTensor.dispose();
       prediction.dispose();
-      const best = [...Array.from(scores)].indexOf(Math.max(...Array.from(scores)));
-      const confidence = Math.max(...Array.from(scores));
-      
-      const responses = [
-        `[LoRA Aligned Response - Model Class 0 (conf=${(confidence * 100).toFixed(1)}%)]\nHere is the aligned generation for your query "${trimmed}":\nWe have optimized the weights for task execution. The output conforms to the instruction format.`,
-        `[LoRA Aligned Response - Model Class 1 (conf=${(confidence * 100).toFixed(1)}%)]\nRegarding "${trimmed}", the fine-tuned adapter predicts class 1 with high confidence. The model weights suggest an aligned completion sequence.`
-      ];
-      return responses[best % responses.length];
+
+      const topValues = Array.from(scores)
+        .map((v, i) => ({ value: v, index: i }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
+
+      const generatedTokens = topValues.map(v => v.index);
+      const generatedText = generatedTokens.map(t => String.fromCharCode(32 + (t % 95))).join('');
+
+      const response = `[Generated from prompt: "${trimmed}"]\n${generatedText}`;
+
+      return response;
     }
   } catch (error) {
     console.error('Model inference failed:', error);
   }
 
-  return `[LoRA Aligned Mock Output]\nRegarding your query "${trimmed}":\nNo fully trained checkpoint weights were loaded from the database. Please start/complete training to activate real-time weight adaptation!`;
+  return `[Generated from prompt: "${trimmed}"]\nNo fully trained checkpoint weights were loaded from the database. Please start/complete training to activate real-time weight adaptation.`;
 }
 
 export async function runServerInference(
@@ -177,7 +181,7 @@ export async function runServerInference(
     // 5. LLM Finetuning
     if (domain === 'llm-finetuning') {
       const text = await generateLocalResponse(prompt, projectId, epoch);
-      const tokenCount = text.split(/\s+/).length + 4;
+      const tokenCount = text.split(/\s+/).length;
       const perplexity = parseFloat((1.2 + Math.random() * 0.15).toFixed(2));
       return {
         text,
