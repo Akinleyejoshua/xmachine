@@ -46,8 +46,6 @@ export interface SandboxBlueprint {
   inputPlaceholder: string;
   primaryBtnText: string;
   outputTitle: string;
-  defaultMockResult: (input: any, classNames: string[], seed?: number) => any;
-  bulkMockResult: (fileName: string, classNames: string[], seed?: number) => any;
 }
 
 export interface DomainConfig {
@@ -77,12 +75,6 @@ export interface DomainConfig {
   // 3. Live Training Config
   training: {
     metrics: MetricOption[];
-    // Generator for simulated epoch metrics
-    generateMockMetrics: (
-      epoch: number,
-      maxEpochs: number,
-      initialLr: number
-    ) => Record<string, number>;
   };
 
   // 4. Inference Sandbox Input/Output Blueprint

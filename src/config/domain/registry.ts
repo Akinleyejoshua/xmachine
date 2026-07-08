@@ -1,6 +1,5 @@
 import { DomainConfig } from './types';
 import { ProjectDomain } from '../../types/pipeline';
-import { createRandom } from '../../utils/random';
 
 export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
   'cv-classification': {
@@ -65,15 +64,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         { id: 'accuracy', label: 'Top-1 Accuracy', color: 'text-royalblue-500', isMain: true },
         { id: 'valLoss', label: 'Val Loss', color: 'text-rose-500', isMain: false },
         { id: 'valAccuracy', label: 'Val Accuracy', color: 'text-green-500', isMain: true }
-      ],
-      generateMockMetrics: (epoch, maxEpochs, initialLr) => {
-        const factor = 1 / (1 + epoch * 0.15);
-        const loss = parseFloat((0.8 * factor + Math.random() * 0.03).toFixed(4));
-        const accuracy = parseFloat((0.2 + (0.75 * (1 - factor)) + Math.random() * 0.02).toFixed(4));
-        const valLoss = parseFloat((0.85 * factor + Math.random() * 0.05).toFixed(4));
-        const valAccuracy = parseFloat((0.18 + (0.72 * (1 - factor)) + Math.random() * 0.03).toFixed(4));
-        return { loss, accuracy, valLoss, valAccuracy };
-      }
+      ]
     },
     sandbox: {
       inputType: 'image',
@@ -81,31 +72,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputTitle: 'Computer Vision Sandbox Ingestion',
       inputPlaceholder: 'PNG, JPG, WEBP supported',
       primaryBtnText: 'Compute Image Inference',
-      outputTitle: 'Classification Output',
-      defaultMockResult: (input, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const predictedClass = classNames[Math.floor(rand() * classNames.length)] || 'Cat';
-        return {
-          class: predictedClass,
-          confidence: 0.942,
-          latencyMs: 14
-        };
-      },
-      bulkMockResult: (fileName, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const trueClass = classNames[Math.floor(rand() * classNames.length)] || 'Cat';
-        const isCorrect = rand() > 0.15;
-        const confidence = 0.70 + rand() * 0.28;
-        const latencyMs = Math.floor(8 + rand() * 12);
-        let predClass = trueClass;
-        if (!isCorrect) {
-          const alternates = classNames.filter(c => c !== trueClass);
-          predClass = alternates[Math.floor(rand() * alternates.length)] || 'IncorrectClass';
-        }
-        return { name: fileName, trueClass, predClass, confidence, latencyMs, correct: isCorrect };
-      }
+      outputTitle: 'Classification Output'
     }
   },
 
@@ -169,15 +136,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         { id: 'mAP', label: 'Mean AP (mAP)', color: 'text-royalblue-500', isMain: true },
         { id: 'valLoss', label: 'Val Loss', color: 'text-rose-500', isMain: false },
         { id: 'mAP_50', label: 'mAP @ 0.50', color: 'text-green-500', isMain: true }
-      ],
-      generateMockMetrics: (epoch, maxEpochs, initialLr) => {
-        const factor = 1 / (1 + epoch * 0.12);
-        const loss = parseFloat((1.2 * factor + Math.random() * 0.05).toFixed(4));
-        const mAP = parseFloat((0.15 + (0.7 * (1 - factor)) + Math.random() * 0.02).toFixed(4));
-        const valLoss = parseFloat((1.25 * factor + Math.random() * 0.06).toFixed(4));
-        const mAP_50 = parseFloat((0.2 + (0.72 * (1 - factor)) + Math.random() * 0.03).toFixed(4));
-        return { loss, mAP, valLoss, mAP_50 };
-      }
+      ]
     },
     sandbox: {
       inputType: 'image',
@@ -185,35 +144,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputTitle: 'Object Detection Sandbox Ingestion',
       inputPlaceholder: 'Upload image and check annotations overlay',
       primaryBtnText: 'Run Object Detector',
-      outputTitle: 'Detected Object Tensors',
-      defaultMockResult: (input, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const predictedClass = classNames[Math.floor(rand() * classNames.length)] || 'Person';
-        return {
-          class: predictedClass,
-          confidence: 0.895,
-          latencyMs: 28,
-          boundingBoxes: [
-            { label: predictedClass, bbox: [25, 20, 50, 60] }, // [top, left, width, height] percentage-based
-            { label: classNames[(classNames.indexOf(predictedClass) + 1) % classNames.length] || 'Car', bbox: [10, 60, 30, 25] }
-          ]
-        };
-      },
-      bulkMockResult: (fileName, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const trueClass = classNames[Math.floor(rand() * classNames.length)] || 'Person';
-        const isCorrect = rand() > 0.2;
-        const confidence = 0.65 + rand() * 0.32;
-        const latencyMs = Math.floor(18 + rand() * 20);
-        let predClass = trueClass;
-        if (!isCorrect) {
-          const alternates = classNames.filter(c => c !== trueClass);
-          predClass = alternates[Math.floor(rand() * alternates.length)] || 'Incorrect';
-        }
-        return { name: fileName, trueClass, predClass, confidence, latencyMs, correct: isCorrect };
-      }
+      outputTitle: 'Detected Object Tensors'
     }
   },
 
@@ -271,15 +202,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         { id: 'accuracy', label: 'Accuracy', color: 'text-royalblue-500', isMain: true },
         { id: 'valLoss', label: 'Val Loss', color: 'text-rose-500', isMain: false },
         { id: 'valAccuracy', label: 'Val Accuracy', color: 'text-green-500', isMain: true }
-      ],
-      generateMockMetrics: (epoch, maxEpochs, initialLr) => {
-        const factor = 1 / (1 + epoch * 0.2);
-        const loss = parseFloat((0.6 * factor + Math.random() * 0.02).toFixed(4));
-        const accuracy = parseFloat((0.4 + (0.55 * (1 - factor)) + Math.random() * 0.015).toFixed(4));
-        const valLoss = parseFloat((0.65 * factor + Math.random() * 0.03).toFixed(4));
-        const valAccuracy = parseFloat((0.38 + (0.52 * (1 - factor)) + Math.random() * 0.02).toFixed(4));
-        return { loss, accuracy, valLoss, valAccuracy };
-      }
+      ]
     },
     sandbox: {
       inputType: 'text',
@@ -287,36 +210,9 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputTitle: 'NLP Sequence Playground',
       inputPlaceholder: 'Enter a review or sentence to classify...',
       primaryBtnText: 'Evaluate Sequence',
-      outputTitle: 'Classification/Sentiment Result',
-      defaultMockResult: (input, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const predictedClass = classNames[Math.floor(rand() * classNames.length)] || 'Positive';
-        return {
-          class: predictedClass,
-          sentiment: predictedClass,
-          confidence: 0.887,
-          tokens: input.split(' ').length,
-          latencyMs: 8
-        };
-      },
-      bulkMockResult: (fileName, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const trueClass = classNames[Math.floor(rand() * classNames.length)] || 'Positive';
-        const isCorrect = rand() > 0.12;
-        const confidence = 0.75 + rand() * 0.22;
-        const latencyMs = Math.floor(4 + rand() * 8);
-        let predClass = trueClass;
-        if (!isCorrect) {
-          const alternates = classNames.filter(c => c !== trueClass);
-          predClass = alternates[Math.floor(Math.random() * alternates.length)] || 'Negative';
-        }
-        return { name: fileName, trueClass, predClass, confidence, latencyMs, correct: isCorrect };
-      }
+      outputTitle: 'Classification/Sentiment Result'
     }
   },
-
   'gans': {
     id: 'gans',
     displayName: 'Generative Adversarial Networks (GANs)',
@@ -366,17 +262,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         { id: 'd_loss', label: 'Discriminator Loss (D_Loss)', color: 'text-neutral-500', isMain: true },
         { id: 'fid', label: 'FID Score', color: 'text-green-500', isMain: true },
         { id: 'd_acc', label: 'D Accuracy (Real/Fake)', color: 'text-rose-500', isMain: false }
-      ],
-      generateMockMetrics: (epoch, maxEpochs, initialLr) => {
-        // GAN loss fluctuates and doesn't just go down. FID score decreases steadily.
-        const factor = 1 / (1 + epoch * 0.05);
-        const g_loss = parseFloat((1.5 + Math.sin(epoch / 3) * 0.2 + Math.random() * 0.05).toFixed(4));
-        const d_loss = parseFloat((0.5 + Math.cos(epoch / 3) * 0.1 + Math.random() * 0.03).toFixed(4));
-        const fid = parseFloat((250 * factor + 15 + Math.random() * 2).toFixed(2));
-        const d_acc = parseFloat((0.45 + Math.random() * 0.1).toFixed(4));
-        // map keys back to training monitor expects loss/accuracy for basic charting fallback
-        return { g_loss, d_loss, fid, d_acc, loss: g_loss, accuracy: 1 - d_acc }; 
-      }
+      ]
     },
     sandbox: {
       inputType: 'noise',
@@ -384,22 +270,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputTitle: 'Adversarial Latent Vector Generator',
       inputPlaceholder: '100-dim Noise Distribution',
       primaryBtnText: 'Generate Synthetic Tensor',
-      outputTitle: 'Generator Synthesized Image',
-      defaultMockResult: (input, classNames, seed) => {
-        return {
-          generatedImageUrl: '/api/placeholder/224/224', // we can render canvas grid block dynamically
-          fidScore: 24.5,
-          gLoss: 1.42,
-          latencyMs: 38
-        };
-      },
-      bulkMockResult: (fileName, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const confidence = 0.5 + rand() * 0.5;
-        const latencyMs = Math.floor(25 + rand() * 15);
-        return { name: fileName, trueClass: 'Real Distribution', predClass: 'Synthesized', confidence, latencyMs, correct: true };
-      }
+      outputTitle: 'Generator Synthesized Image'
     }
   },
 
@@ -447,14 +318,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         { id: 'loss', label: 'Token Cross-Entropy Loss', color: 'text-neutral-500', isMain: false },
         { id: 'perplexity', label: 'Perplexity (PPL)', color: 'text-royalblue-500', isMain: true },
         { id: 'tokens_per_sec', label: 'Speed (Tokens/s)', color: 'text-green-500', isMain: false }
-      ],
-      generateMockMetrics: (epoch, maxEpochs, initialLr) => {
-        const factor = 1 / (1 + epoch * 0.3);
-        const loss = parseFloat((2.5 * factor + Math.random() * 0.05).toFixed(4));
-        const perplexity = parseFloat((50.4 * factor + 3.5 + Math.random() * 0.5).toFixed(2));
-        const tokens_per_sec = parseFloat((120 + Math.random() * 10).toFixed(1));
-        return { loss, perplexity, tokens_per_sec, accuracy: 1 / loss }; // mapping accuracy mock
-      }
+      ]
     },
     sandbox: {
       inputType: 'text',
@@ -462,22 +326,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputTitle: 'LoRA Text Generation Sandbox',
       inputPlaceholder: 'Enter prompt query (e.g. Write a quicksort in Rust)...',
       primaryBtnText: 'Generate Completion',
-      outputTitle: 'Causal Autoregressive Output',
-      defaultMockResult: (input, classNames, seed) => {
-        return {
-        text: `This is a mock response for: "${input}". Replace this with an actual LLM API call.`,
-          perplexity: 4.85,
-          latencyMs: 280,
-          tokens: 112
-        };
-      },
-      bulkMockResult: (fileName, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const confidence = 0.8 + rand() * 0.15;
-        const latencyMs = Math.floor(180 + rand() * 120);
-        return { name: fileName, trueClass: 'Target Instruction', predClass: 'Aligned Output', confidence, latencyMs, correct: true };
-      }
+      outputTitle: 'Causal Autoregressive Output'
     }
   },
   'time-series-forecasting': {
@@ -537,16 +386,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
         { id: 'mae', label: 'MAE', color: 'text-green-500', isMain: true },
         { id: 'mape', label: 'MAPE (%)', color: 'text-orange-500', isMain: false },
         { id: 'dir_acc', label: 'Directional Accuracy', color: 'text-rose-500', isMain: false }
-      ],
-      generateMockMetrics: (epoch, maxEpochs, initialLr) => {
-        const factor = 1 / (1 + epoch * 0.18);
-        const loss = parseFloat((0.9 * factor + Math.random() * 0.04).toFixed(4));
-        const rmse = parseFloat((1.5 * factor + 0.1 + Math.random() * 0.05).toFixed(4));
-        const mae = parseFloat((1.1 * factor + 0.08 + Math.random() * 0.04).toFixed(4));
-        const mape = parseFloat((15.0 * factor + 2.0 + Math.random() * 0.8).toFixed(2));
-        const dir_acc = parseFloat((0.55 + (0.3 * (1 - factor)) + Math.random() * 0.02).toFixed(4));
-        return { loss, rmse, mae, mape, dir_acc };
-      }
+      ]
     },
     sandbox: {
       inputType: 'time-series',
@@ -554,49 +394,7 @@ export const DOMAIN_CONFIGS: Record<ProjectDomain, DomainConfig> = {
       inputTitle: 'Time-Series Sequence Sandbox',
       inputPlaceholder: 'Enter numeric sequence or drop a CSV file of values...',
       primaryBtnText: 'Generate Forecast Horizon',
-      outputTitle: 'Continuous Forecast Chart',
-      defaultMockResult: (input, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const lookbackPoints = 30;
-        const forecastPoints = 10;
-        const lookback = [];
-        const forecast = [];
-        const confidenceLower = [];
-        const confidenceUpper = [];
-        
-        let val = 100 + rand() * 20;
-        for (let i = 0; i < lookbackPoints; i++) {
-          val = val + (rand() - 0.45) * 5;
-          lookback.push(parseFloat(val.toFixed(2)));
-        }
-        
-        let lastVal = lookback[lookback.length - 1];
-        for (let i = 0; i < forecastPoints; i++) {
-          lastVal = lastVal + 2 + (rand() - 0.5) * 4;
-          forecast.push(parseFloat(lastVal.toFixed(2)));
-          const uncertainty = (i + 1) * 1.5;
-          confidenceLower.push(parseFloat((lastVal - uncertainty).toFixed(2)));
-          confidenceUpper.push(parseFloat((lastVal + uncertainty).toFixed(2)));
-        }
-        
-        return {
-          lookback,
-          forecast,
-          confidenceLower,
-          confidenceUpper,
-          latencyMs: 18,
-          rmse: 1.24,
-          mae: 0.96
-        };
-      },
-      bulkMockResult: (fileName, classNames, seed) => {
-        const rng = typeof seed === 'number' ? createRandom(seed) : null;
-        const rand = rng ? () => rng() : Math.random;
-        const confidence = 0.8 + rand() * 0.15;
-        const latencyMs = Math.floor(10 + rand() * 8);
-        return { name: fileName, trueClass: 'Actual sequence', predClass: 'Actual sequence', confidence, latencyMs, correct: true };
-      }
+      outputTitle: 'Continuous Forecast Chart'
     }
   }
 };

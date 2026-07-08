@@ -126,7 +126,7 @@ import {
 } from 'lucide-react';
 import { DOMAIN_CONFIGS } from '../../config/domain/registry';
 import { buildModel, getTf } from '../../utils/model';
-import { generateSyntheticBatch, generateSyntheticTextBatch, generateSyntheticTimeSeriesBatch, saveModel } from '../../utils/training';
+import { saveModel } from '../../utils/training';
 
 type ChartType = 'line' | 'area' | 'bar' | 'scatter' | 'smooth';
 
@@ -429,10 +429,10 @@ print("PyTorch model ready for scaling!")
       setTrainingStatus('training');
       setLogs(prev => [...prev, `[INFO] Model initialized successfully. Input shape: [${inputShape.join(', ')}]`]);
     } catch (err) {
-      console.warn('Real TF.js training unavailable, falling back to simulation:', err);
-      useRealTraining = false;
-      setTrainingStatus('training');
-      setLogs(prev => [...prev, `[WARN] TF.js training failed. Using simulated metrics instead.`]);
+      console.error('Model build failed:', err);
+      setTrainingStatus('failed');
+      setLogs(prev => [...prev, `[ERROR] Model build failed: ${err}`]);
+      return;
     }
 
     const runStep = async () => {
@@ -490,52 +490,45 @@ print("PyTorch model ready for scaling!")
           const seed = (etl.seed || 42) + epoch;
           const hasRealData = etl.files.some(f => f.rawContent);
 
-          if (hasRealData) {
-            const validFiles = etl.files.filter(f => f.rawContent);
-            const splitRatio = etl.splitRatio?.train || 80;
-            const splitIndex = Math.floor(validFiles.length * (splitRatio / 100));
-            let trainFiles = validFiles.slice(0, splitIndex);
-            let valFiles = validFiles.slice(splitIndex);
-            if (trainFiles.length === 0) trainFiles = validFiles;
-            if (valFiles.length === 0) valFiles = trainFiles;
-
-            ({ xs, ys } = await generateRealBatch(trainFiles, currentProject.domain, inputShape, classNames, etl.batchSize || 32));
-            const valBatch = await generateRealBatch(valFiles, currentProject.domain, inputShape, classNames, etl.batchSize || 32);
-            valXs = valBatch.xs;
-            valYs = valBatch.ys;
-          } else {
-            if (currentProject.domain === 'nlp' || currentProject.domain === 'llm-finetuning') {
-              const vocabSize = currentProject.domain === 'llm-finetuning' ? 5000 : 5000;
-              const isLLM = currentProject.domain === 'llm-finetuning';
-              ({ xs, ys } = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed, isLLM));
-              const valBatch = await generateSyntheticTextBatch(vocabSize, 100, classCount, etl.batchSize || 32, seed + 999, isLLM);
-              valXs = valBatch.xs;
-              valYs = valBatch.ys;
-            } else if (currentProject.domain === 'time-series-forecasting') {
-              ({ xs, ys } = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed));
-              const valBatch = await generateSyntheticTimeSeriesBatch(30, 10, etl.batchSize || 32, seed + 999);
-              valXs = valBatch.xs;
-              valYs = valBatch.ys;
-            } else {
-              ({ xs, ys } = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed));
-              const valBatch = await generateSyntheticBatch(inputShape, classCount, etl.batchSize || 32, seed + 999);
-              valXs = valBatch.xs;
-              valYs = valBatch.ys;
-            }
+          const validFiles = etl.files.filter(f => f.rawContent);
+          if (validFiles.length === 0) {
+            throw new Error('No files with rawContent found for training.');
           }
+          const shuffled = [...validFiles].sort(() => Math.random() - 0.5);
+          const splitRatio = etl.splitRatio?.train || 80;
+          const splitIndex = Math.floor(shuffled.length * (splitRatio / 100));
+          let trainFiles = shuffled.slice(0, splitIndex);
+          let valFiles = shuffled.slice(splitIndex);
+          if (trainFiles.length === 0) trainFiles = shuffled;
+          if (valFiles.length === 0) valFiles = trainFiles;
+
+          ({ xs, ys } = await generateRealBatch(trainFiles, currentProject.domain, inputShape, classNames, etl.batchSize || 32));
+          const valBatch = await generateRealBatch(valFiles, currentProject.domain, inputShape, classNames, etl.batchSize || 32);
+          valXs = valBatch.xs;
+          valYs = valBatch.ys;
 
           if (model && currentProject.domain !== 'llm-finetuning') {
             const outShape = model.outputs[0].shape;
-            const targetShape = outShape.map((d: any) => d === null || d === -1 ? (etl.batchSize || 32) : d);
-            if (ys) {
-              try { ys = ys.reshape(targetShape); } catch (e) { /* ignore */ }
+            const targetShape = outShape.map((d: any) => d === null || d === -1 ? -1 : d);
+            if (ys && targetShape.slice(1).every((d: number) => d !== -1)) {
+              try {
+                const yShape = ys.shape;
+                if (yShape && yShape.length === targetShape.length && yShape.slice(1).every((d: number, i: number) => d === targetShape[i + 1] || targetShape[i + 1] === -1)) {
+                  // shapes match, no reshape needed
+                } else {
+                  ys = ys.reshape([-1, ...targetShape.slice(1)]);
+                }
+              } catch (e) { /* ignore */ }
             }
-            if (valYs) {
-              try { valYs = valYs.reshape(targetShape); } catch (e) { /* ignore */ }
+            if (valYs && targetShape.slice(1).every((d: number) => d !== -1)) {
+              try {
+                valYs = valYs.reshape([-1, ...targetShape.slice(1)]);
+              } catch (e) { /* ignore */ }
             }
           }
         } catch (err) {
-          console.warn('Batch generation failed, fallback to simulation:', err);
+          console.error('Batch generation failed:', err);
+          setLogs(prev => [...prev, `[ERROR] Batch generation failed: ${err}`]);
         }
       }
 
@@ -563,22 +556,6 @@ print("PyTorch model ready for scaling!")
           console.error('Training step failed:', err);
           setLogs(prev => [...prev, `[ERROR] Training step failed: ${err}`]);
         }
-      } else {
-        const activeConfig = DOMAIN_CONFIGS[currentProject.domain];
-        const epochMetrics = activeConfig.training.generateMockMetrics(epoch, targetEpoch, initialLr);
-        loss = epochMetrics.loss ?? loss;
-        accuracy = epochMetrics.accuracy ?? accuracy;
-        perplexity = epochMetrics.perplexity ?? perplexity;
-        tokens_per_sec = epochMetrics.tokens_per_sec ?? tokens_per_sec;
-        mAP = epochMetrics.mAP ?? mAP;
-        mAP_50 = epochMetrics.mAP_50 ?? mAP_50;
-        fid = epochMetrics.fid ?? fid;
-        g_loss = epochMetrics.g_loss ?? g_loss;
-        d_loss = epochMetrics.d_loss ?? d_loss;
-        mae = epochMetrics.mae ?? mae;
-
-        valLoss = parseFloat((loss * 1.05 + Math.random() * 0.02).toFixed(4));
-        valAccuracy = parseFloat(Math.max(0, accuracy - 0.02 - Math.random() * 0.03).toFixed(4));
       }
 
       if (currentProject.domain === 'llm-finetuning') {

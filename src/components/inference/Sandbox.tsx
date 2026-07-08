@@ -29,6 +29,7 @@ interface BulkItem {
   confidence: number;
   latencyMs: number;
   correct: boolean;
+  error?: string;
 }
 
 interface BulkEvaluationResult {
@@ -127,15 +128,7 @@ export const Sandbox: React.FC = () => {
 
     let filesToEvaluate = bulkImportFiles.length > 0
       ? bulkImportFiles
-      : (etl.files.length > 0 ? etl.files : [
-          { id: '1', name: 'cat_sample_01.jpg', size: 1024, type: 'image' as const },
-          { id: '2', name: 'dog_sample_02.jpg', size: 1024, type: 'image' as const },
-          { id: '3', name: 'bird_sample_03.jpg', size: 1024, type: 'image' as const },
-          { id: '4', name: 'cat_sample_04.jpg', size: 1024, type: 'image' as const },
-          { id: '5', name: 'dog_sample_05.jpg', size: 1024, type: 'image' as const },
-          { id: '6', name: 'bird_sample_06.jpg', size: 1024, type: 'image' as const },
-          { id: '7', name: 'cat_sample_07.jpg', size: 1024, type: 'image' as const },
-        ]);
+      : (etl.files.length > 0 ? etl.files : []);
 
     if (bulkRandomize) {
       filesToEvaluate = [...filesToEvaluate].sort(() => Math.random() - 0.5);
@@ -153,48 +146,37 @@ export const Sandbox: React.FC = () => {
 
     for (const file of filesToEvaluate) {
       let trueClass = detectFileClass(file.name, classNames);
-
-      let hash = 0;
-      for (let i = 0; i < file.name.length; i++) {
-        hash = (hash << 5) - hash + file.name.charCodeAt(i);
-        hash |= 0;
-      }
-      const absHash = Math.abs(hash);
-
       if (!trueClass) {
-        trueClass = classNames[absHash % classNames.length] || classNames[0];
+        trueClass = classNames[0] || 'Unknown';
       }
 
       try {
         let predClass: string;
         let confidence: number;
+        const startTime = performance.now();
 
         if (activeConfig?.sandbox.inputType === 'image' && typeof file.rawContent === 'string') {
           if (!cachedModel) {
             const { loadModel } = await import('../../utils/training');
             cachedModel = await loadModel(currentProject.id, selectedCheckpoint);
           }
-          if (cachedModel) {
-            const img = new window.Image();
-            img.src = file.rawContent;
-            await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(); });
-            let tensor = t.browser.fromPixels(img);
-            const imgShape = getInputShape(currentProject.domain);
-            if (imgShape.length >= 2) {
-              tensor = tensor.resizeBilinear([imgShape[0], imgShape[1]]).toFloat().div(255).expandDims(0);
-            }
-            const prediction = cachedModel.predict(tensor);
-            tensor.dispose();
-            const scores = await prediction.data() as Float32Array;
-            prediction.dispose();
-            const maxScore = Math.max(...Array.from(scores));
-            const classIndex = Array.from(scores).indexOf(maxScore);
-            predClass = classNames[classIndex] || classNames[0];
-            confidence = maxScore;
-          } else {
-            predClass = classNames[absHash % classNames.length] || classNames[0];
-            confidence = 0.5;
+          if (!cachedModel) throw new Error('No trained model found.');
+          const img = new window.Image();
+          img.src = file.rawContent;
+          await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(); });
+          let tensor = t.browser.fromPixels(img);
+          const imgShape = getInputShape(currentProject.domain);
+          if (imgShape.length >= 2) {
+            tensor = tensor.resizeBilinear([imgShape[0], imgShape[1]]).toFloat().div(255).expandDims(0);
           }
+          const prediction = cachedModel.predict(tensor);
+          tensor.dispose();
+          const scores = await prediction.data() as Float32Array;
+          prediction.dispose();
+          const maxScore = Math.max(...Array.from(scores));
+          const classIndex = Array.from(scores).indexOf(maxScore);
+          predClass = classNames[classIndex] || classNames[0];
+          confidence = maxScore;
         } else {
           const inputVal = typeof file.rawContent === 'string' ? file.rawContent : file.name;
           const response = await fetch('/api/inference', {
@@ -208,30 +190,32 @@ export const Sandbox: React.FC = () => {
             }),
           });
           const responseData = await response.json();
-          if (responseData.success && responseData.data) {
-            const prediction = responseData.data;
-            predClass = prediction.class || prediction.sentiment || classNames[0];
-            confidence = prediction.confidence ?? 0.5;
-          } else {
-            predClass = classNames[absHash % classNames.length] || classNames[0];
-            confidence = 0.5;
-          }
+          if (!responseData.success || !responseData.data) throw new Error(responseData.error || 'Inference failed');
+          predClass = responseData.data.class || responseData.data.sentiment || classNames[0];
+          confidence = responseData.data.confidence ?? 0.5;
         }
 
+        const latencyMs = Math.round(performance.now() - startTime);
         const isCorrect = predClass === trueClass;
         items.push({
           name: file.name,
           trueClass,
           predClass,
           confidence,
-          latencyMs: Math.floor(8 + (absHash % 12)),
+          latencyMs,
           correct: isCorrect
         });
-      } catch {
-        const mock = activeConfig?.sandbox.bulkMockResult(file.name, classNames, absHash);
-        mock.trueClass = trueClass;
-        mock.correct = mock.predClass === trueClass;
-        items.push(mock);
+      } catch (err) {
+        console.error('Bulk evaluation failed for:', file.name, err);
+        items.push({
+          name: file.name,
+          trueClass,
+          predClass: 'Error',
+          confidence: 0,
+          latencyMs: 0,
+          correct: false,
+          error: String(err)
+        });
       }
     }
 
