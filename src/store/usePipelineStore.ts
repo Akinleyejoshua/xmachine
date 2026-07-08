@@ -36,6 +36,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
       // Initial state
       currentProject: null,
       wizardOpen: true,
+      projectLoading: false,
       etl: {
         files: [],
         actions: [],
@@ -45,6 +46,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
         splitRatio: { train: 80, val: 20, test: 0 },
         seed: 42,
         stratified: true,
+        maxSamples: 200,
       },
       modelConfig: {
         layers: [],
@@ -72,6 +74,10 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
             batchSize: 32,
             shuffle: true,
             classNames: defaultClassNames,
+            splitRatio: { train: 80, val: 20, test: 0 },
+            seed: 42,
+            stratified: true,
+            maxSamples: 200,
           },
           modelConfig: {
             layers: defaultLayers,
@@ -107,6 +113,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
                 splitRatio: { train: 80, val: 20, test: 0 },
                 seed: 42,
                 stratified: true,
+                maxSamples: 200,
               },
               modelConfig: result.data.modelConfig,
               trainingStatus: 'idle',
@@ -142,6 +149,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
             splitRatio: { train: 80, val: 20, test: 0 },
             seed: 42,
             stratified: true,
+            maxSamples: 200,
           },
           modelConfig: {
             layers: defaultLayers,
@@ -157,7 +165,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
         });
       },
 
-      loadProject: (project) => {
+      loadProject: async (project) => {
         const { defaultClassNames } = getDomainDefaults(project.domain);
         set({
           currentProject: {
@@ -168,6 +176,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
             updatedAt: project.updatedAt,
           },
           wizardOpen: false,
+          projectLoading: false,
           etl: project.etl || {
             files: [],
             actions: [],
@@ -177,6 +186,7 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
             splitRatio: { train: 80, val: 20, test: 0 },
             seed: 42,
             stratified: true,
+            maxSamples: 200,
           },
           modelConfig: project.modelConfig,
           trainingStatus: 'idle',
@@ -186,6 +196,21 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
           inferenceResult: null,
           inferenceActive: false,
         });
+        // Restore file content from IndexedDB in background
+        if (typeof window !== 'undefined' && project.etl?.files?.length > 0) {
+          try {
+            const { restoreFileContents } = await import('../utils/fileStore');
+            const contentMap = await restoreFileContents(project.etl.files);
+            const files = project.etl.files.map((f: any) => ({
+              ...f,
+              rawContent: contentMap.get(f.id) || f.rawContent,
+            }));
+            const state = usePipelineStore.getState();
+            usePipelineStore.setState({ etl: { ...state.etl, files } });
+          } catch (e) {
+            console.warn('Failed to restore file content from IndexedDB:', e);
+          }
+        }
       },
 
       saveProjectProgress: async () => {
@@ -225,11 +250,13 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
           return { theme: newTheme };
         }),
 
+      setProjectLoading: (loading) => set({ projectLoading: loading }),
+
       resetProject: () =>
         set({
           currentProject: null,
           wizardOpen: true,
-          etl: { files: [], actions: [], batchSize: 32, shuffle: true, classNames: ['Cat', 'Dog', 'Bird'], splitRatio: { train: 80, val: 20, test: 0 }, seed: 42, stratified: true },
+          etl: { files: [], actions: [], batchSize: 32, shuffle: true, classNames: ['Cat', 'Dog', 'Bird'], splitRatio: { train: 80, val: 20, test: 0 }, seed: 42, stratified: true, maxSamples: 200 },
           modelConfig: { layers: [], hyperparameters: DEFAULT_HYPERPARAMETERS },
           trainingStatus: 'idle',
           metricsHistory: [],
@@ -243,16 +270,25 @@ export const usePipelineStore = create<PipelineState & PipelineActions>()(
       setWizardOpen: (open) => set({ wizardOpen: open }),
 
       addFiles: async (newFiles) => {
+        // Save file content to IndexedDB
+        if (typeof window !== 'undefined') {
+          const { saveAllFileContents } = await import('../utils/fileStore');
+          await saveAllFileContents(newFiles.map(f => ({ id: f.id, rawContent: typeof f.rawContent === 'string' ? f.rawContent : undefined })));
+        }
         set((state) => ({
           etl: {
             ...state.etl,
-            files: [...state.etl.files, ...newFiles],
+            files: [...state.etl.files, ...newFiles.map(({ rawContent, ...meta }) => meta)],
           },
         }));
         await usePipelineStore.getState().saveProjectProgress();
       },
 
       removeFile: async (fileId) => {
+        if (typeof window !== 'undefined') {
+          const { removeFileContent } = await import('../utils/fileStore');
+          await removeFileContent(fileId);
+        }
         set((state) => ({
           etl: {
             ...state.etl,

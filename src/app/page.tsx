@@ -8,10 +8,26 @@ import { ModelBuilder } from '../components/builder/ModelBuilder';
 import { HyperparameterForm } from '../components/builder/HyperparameterForm';
 import { TrainingMonitor } from '../components/training/TrainingMonitor';
 import { Sandbox } from '../components/inference/Sandbox';
-import { BrainCircuit, LogOut, Sun, Moon } from 'lucide-react';
+import { BrainCircuit, LogOut, Sun, Moon, Loader2 } from 'lucide-react';
+
+function SectionSkeleton({ height = 'h-48' }: { height?: string }) {
+  return (
+    <div className={`${height} bg-neutral-100 dark:bg-neutral-900 rounded-xl p-6 space-y-4 animate-pulse`}>
+      <div className="flex items-center gap-3">
+        <div className="w-5 h-5 bg-neutral-200 dark:bg-neutral-800 rounded" />
+        <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded w-1/3" />
+      </div>
+      <div className="space-y-2">
+        <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded w-full" />
+        <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded w-5/6" />
+        <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded w-4/6" />
+      </div>
+    </div>
+  );
+}
 
 export default function WorkspacePage() {
-  const { currentProject, resetProject, theme, toggleTheme } = usePipelineStore();
+  const { currentProject, projectLoading, resetProject, theme, toggleTheme } = usePipelineStore();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -36,13 +52,19 @@ export default function WorkspacePage() {
                 <BrainCircuit className="w-4 h-4 sm:w-5 sm:h-5 text-royalblue-600 dark:text-royalblue-400" />
               </div>
               <div className="text-left min-w-0">
-                <h1 className="font-extrabold text-sm tracking-wide text-neutral-900 dark:text-white font-mono uppercase truncate">{currentProject.name}</h1>
+                <h1 className="font-extrabold text-sm tracking-wide text-neutral-900 dark:text-white font-mono uppercase truncate">
+                  {projectLoading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-royalblue-500" />
+                      <span className="text-neutral-400 font-normal text-xs">Loading project...</span>
+                    </span>
+                  ) : currentProject.name}
+                </h1>
                 <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5">Domain: <span className="font-semibold text-royalblue-600 dark:text-royalblue-400 capitalize">{currentProject.domain.replace(/-/g, ' ')}</span></p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              {/* Theme Toggle Button */}
               <button
                 onClick={toggleTheme}
                 className="p-2 bg-neutral-100 hover:bg-neutral-200 dark:bg-black dark:hover:bg-neutral-900 text-neutral-600 dark:text-neutral-300 rounded-lg transition-all"
@@ -63,27 +85,27 @@ export default function WorkspacePage() {
 
           {/* ETL Ingestion */}
           <section className="bg-transparent overflow-hidden">
-            <ETLCanvas />
+            {projectLoading ? <SectionSkeleton height="h-56" /> : <ETLCanvas />}
           </section>
 
           {/* Model Customizer & Architectures */}
           <section className="grid grid-cols-1 xl:grid-cols-3 gap-6 sm:gap-8">
             <div className="xl:col-span-2 bg-transparent overflow-hidden">
-              <ModelBuilder />
+              {projectLoading ? <SectionSkeleton /> : <ModelBuilder />}
             </div>
             <div className="bg-transparent overflow-hidden">
-              <HyperparameterForm />
+              {projectLoading ? <SectionSkeleton height="h-40" /> : <HyperparameterForm />}
             </div>
           </section>
 
           {/* Training Monitor */}
           <section className="bg-transparent overflow-hidden">
-            <TrainingMonitor />
+            {projectLoading ? <SectionSkeleton height="h-64" /> : <TrainingMonitor />}
           </section>
 
           {/* Sandbox Playground */}
           <section className="bg-transparent overflow-hidden">
-            <Sandbox />
+            {projectLoading ? <SectionSkeleton height="h-64" /> : <Sandbox />}
           </section>
 
         </div>

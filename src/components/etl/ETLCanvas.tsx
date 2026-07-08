@@ -13,6 +13,7 @@ import {
   Tags,
   Sliders,
   Shuffle,
+  Maximize2,
   SplitSquareHorizontal,
   Hash,
   ChevronDown,
@@ -35,7 +36,6 @@ export const detectFileClass = (fileName: string, classNames: string[]): string 
       const parentFolder = parts[parts.length - 2].toLowerCase().trim();
       const matched = classNames.find(c => c.toLowerCase().trim() === parentFolder);
       if (matched) return matched;
-      return parentFolder;
     }
   }
   return null;
@@ -341,6 +341,43 @@ export const ETLCanvas: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Max Samples & Randomize */}
+            <div className="space-y-4 pt-3 border-t border-neutral-100 dark:border-neutral-900 mt-3">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 flex items-center gap-1.5">
+                  <Shuffle className="w-3.5 h-3.5 text-royalblue-500 shrink-0" />
+                  <span>Randomize Dataset</span>
+                </label>
+                <button
+                  onClick={() => updateEtlConfig({ shuffle: !etl.shuffle })}
+                  className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors shrink-0 ${
+                    etl.shuffle ? 'bg-royalblue-500' : 'bg-neutral-300 dark:bg-neutral-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                      etl.shuffle ? 'translate-x-5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="text-left space-y-1.5">
+                <label className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 flex items-center gap-1.5">
+                  <Maximize2 className="w-3.5 h-3.5 text-royalblue-500" />
+                  <span>Max Training Samples</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range" min={4} max={500} step={1}
+                    value={etl.maxSamples || 200}
+                    onChange={e => updateEtlConfig({ maxSamples: parseInt(e.target.value) })}
+                    className="flex-1 accent-royalblue-500 h-1.5 rounded-full"
+                  />
+                  <span className="text-xs font-mono font-bold text-royalblue-600 dark:text-royalblue-400 w-12 text-right">{etl.maxSamples || 200}</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -381,7 +418,27 @@ export const ETLCanvas: React.FC = () => {
           </div>
 
           {etl.files.length > 0 && (
-            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-neutral-400 font-semibold">{etl.files.length} files uploaded</span>
+                <button
+                  onClick={() => {
+                    if (confirm('Clear all uploaded files? This cannot be undone.')) {
+                      etl.files.forEach(f => {
+                        if (typeof window !== 'undefined') {
+                          import('../../utils/fileStore').then(m => m.removeFileContent(f.id)).catch(() => {});
+                        }
+                      });
+                      etl.files.forEach(f => removeFile(f.id));
+                    }
+                  }}
+                  className="text-[9px] px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded font-semibold transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Clear All</span>
+                </button>
+              </div>
+              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
               {etl.files.map(file => {
                 const detectedClass = detectFileClass(file.name, etl.classNames);
                 return (
@@ -407,6 +464,7 @@ export const ETLCanvas: React.FC = () => {
                 );
               })}
             </div>
+            </>
           )}
         </div>
 

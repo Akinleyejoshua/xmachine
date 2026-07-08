@@ -79,7 +79,7 @@ const DOMAINS: DomainOption[] = [
 ];
 
 export const ProjectWizard: React.FC = () => {
-  const { initProject, loadProject, wizardOpen } = usePipelineStore();
+  const { initProject, loadProject, wizardOpen, setProjectLoading } = usePipelineStore();
   const [projectName, setProjectName] = useState('');
   const [selectedDomain, setSelectedDomain] = useState<ProjectDomain | null>(null);
   const [error, setError] = useState('');
@@ -134,8 +134,18 @@ export const ProjectWizard: React.FC = () => {
 
   const handleContinue = async (project: any) => {
     setActionLoadingId(project._id);
+    setProjectLoading(true);
     try {
-      loadProject(project);
+      const res = await fetch(`/api/projects?id=${project._id}`);
+      const json = await res.json();
+      if (json.success) {
+        await loadProject(json.data);
+      } else {
+        await loadProject(project);
+      }
+    } catch (err) {
+      console.error('Failed to load full project', err);
+      await loadProject(project);
     } finally {
       setActionLoadingId(null);
     }

@@ -75,6 +75,7 @@ export interface ETLPipeline {
   splitRatio: SplitRatio;
   seed: number;
   stratified: boolean;
+  maxSamples: number;
 }
 
 // ==========================================
@@ -164,6 +165,7 @@ export interface PipelineState {
   // Onboarding & Project setup
   currentProject: ProjectMeta | null;
   wizardOpen: boolean;
+  projectLoading: boolean;
 
   // Ingestion & ETL
   etl: ETLPipeline;
@@ -193,6 +195,7 @@ export interface PipelineActions {
   saveProjectProgress: () => Promise<void>;
   resetProject: () => void;
   setWizardOpen: (open: boolean) => void;
+  setProjectLoading: (loading: boolean) => void;
   toggleTheme: () => void;
 
   // Ingestion & ETL Actions

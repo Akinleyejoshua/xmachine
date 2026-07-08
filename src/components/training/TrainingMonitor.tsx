@@ -17,11 +17,7 @@ const generateRealBatch = async (
     throw new Error("No files with rawContent found.");
   }
 
-  const selectedFiles = [];
-  for (let i = 0; i < batchSize; i++) {
-    const idx = Math.floor(Math.random() * validFiles.length);
-    selectedFiles.push(validFiles[idx]);
-  }
+  const selectedFiles = validFiles.slice(0, batchSize);
 
   if (domain === 'cv-classification' || domain === 'object-detection') {
     const [height, width, channels] = inputShape;
@@ -493,8 +489,18 @@ print("PyTorch model ready for scaling!")
           if (trainFiles.length === 0) trainFiles = shuffled;
           if (valFiles.length === 0) valFiles = trainFiles;
 
-          ({ xs, ys } = await generateRealBatch(trainFiles, currentProject.domain, inputShape, classNames, etl.batchSize || 32));
-          const valBatch = await generateRealBatch(valFiles, currentProject.domain, inputShape, classNames, etl.batchSize || 32);
+          const batchSize = etl.batchSize || 32;
+          const maxSamples = etl.maxSamples || 200;
+          if (trainFiles.length > maxSamples) {
+            trainFiles = trainFiles.sort(() => Math.random() - 0.5).slice(0, maxSamples);
+          }
+          if (valFiles.length > maxSamples) {
+            valFiles = valFiles.sort(() => Math.random() - 0.5).slice(0, maxSamples);
+          }
+
+          const epochTrainFiles = etl.shuffle ? [...trainFiles].sort(() => Math.random() - 0.5) : trainFiles;
+          ({ xs, ys } = await generateRealBatch(epochTrainFiles, currentProject.domain, inputShape, classNames, batchSize));
+          const valBatch = await generateRealBatch(valFiles, currentProject.domain, inputShape, classNames, batchSize);
           valXs = valBatch.xs;
           valYs = valBatch.ys;
 
