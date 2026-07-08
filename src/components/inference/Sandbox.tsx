@@ -108,20 +108,8 @@ export const Sandbox: React.FC = () => {
           ]
         };
       } else {
-        let maxScore = Math.max(...Array.from(scores));
-        let classIndex = Array.from(scores).indexOf(maxScore);
-
-        if (uploadedFileName) {
-          const detected = detectFileClass(uploadedFileName, classNames);
-          if (detected) {
-            const detIdx = classNames.indexOf(detected);
-            if (detIdx !== -1) {
-              classIndex = detIdx;
-              maxScore = 0.88 + Math.random() * 0.08;
-            }
-          }
-        }
-
+        const maxScore = Math.max(...Array.from(scores));
+        const classIndex = Array.from(scores).indexOf(maxScore);
         return { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: 14 };
       }
     }
@@ -218,19 +206,6 @@ export const Sandbox: React.FC = () => {
     setBulkActive(true);
     setBulkResults(null);
 
-    let model: any = null;
-    try {
-      const { loadModel } = await import('../../utils/training');
-      model = await loadModel(currentProject.id, selectedCheckpoint);
-    } catch (e) {
-      console.warn('Failed to load model for batch evaluation:', e);
-    }
-
-    const { getTf } = await import('../../utils/model');
-    const t = await getTf();
-
-    const shape = getInputShape(currentProject.domain);
-
     const filesToEvaluate = etl.files.length > 0 ? etl.files : [
       { id: '1', name: 'cat_sample_01.jpg', size: 1024, type: 'image' as const },
       { id: '2', name: 'dog_sample_02.jpg', size: 1024, type: 'image' as const },
@@ -244,10 +219,8 @@ export const Sandbox: React.FC = () => {
     const items: BulkItem[] = [];
 
     for (const file of filesToEvaluate) {
-      // Get true label from file name
       let trueClass = detectFileClass(file.name, classNames);
-      
-      // Calculate deterministic filename hash
+
       let hash = 0;
       for (let i = 0; i < file.name.length; i++) {
         hash = (hash << 5) - hash + file.name.charCodeAt(i);
@@ -259,87 +232,43 @@ export const Sandbox: React.FC = () => {
         trueClass = classNames[absHash % classNames.length] || classNames[0];
       }
 
-      if (model) {
-        try {
-          // Create deterministic synthetic input based on filename hash
-          const targetSize = shape.reduce((a, b) => a * b, 1);
-          const rng = typeof window !== 'undefined' ? (await import('../../utils/random').then(m => m.createRandom(absHash))) : Math.random;
-          const trueClassIndex = classNames.indexOf(trueClass);
+      try {
+        const inputVal = activeConfig?.sandbox.inputType === 'image' && typeof file.rawContent === 'string'
+          ? file.rawContent
+          : (typeof file.rawContent === 'string' ? file.rawContent : file.name);
 
-          let tensor;
-          if (shape.length === 1) {
-            // NLP / 1D sequential integer tensor (Best Practice)
-            const vocabSize = currentProject.domain === 'llm-finetuning' ? 32000 : 5000;
-            const intValues = Array.from({ length: targetSize }, () => Math.floor(rng() * (vocabSize - 1)));
-            
-            if (trueClassIndex !== -1) {
-              const currentSum = intValues.reduce((a, b) => a + b, 0);
-              const diff = (trueClassIndex - (currentSum % classNames.length) + classNames.length) % classNames.length;
-              intValues[0] = (intValues[0] + diff) % vocabSize;
-            }
-            tensor = t.tensor2d([intValues], [1, shape[0]]);
-          } else {
-            // CV or Time Series float tensor
-            const floatValues = new Float32Array(targetSize);
-            let currentSum = 0;
-            for (let i = 0; i < targetSize; i++) {
-              floatValues[i] = rng();
-              currentSum += floatValues[i];
-            }
+        const response = await fetch('/api/inference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: inputVal,
+            projectId: currentProject.id,
+            domain: currentProject.domain,
+            epoch: selectedCheckpoint === 'latest' ? undefined : selectedCheckpoint,
+          }),
+        });
 
-            if (trueClassIndex !== -1) {
-              const currentInt = Math.floor(currentSum);
-              const diff = (trueClassIndex - (currentInt % classNames.length) + classNames.length) % classNames.length;
-              const targetSum = currentInt + diff + 0.5;
-              const delta = (targetSum - currentSum) / targetSize;
-              for (let i = 0; i < targetSize; i++) {
-                floatValues[i] = Math.min(Math.max(floatValues[i] + delta, 0), 1);
-              }
-            }
+        const responseData = await response.json();
 
-            if (shape.length === 2) {
-              tensor = t.tensor3d(floatValues, [1, shape[0], shape[1]]);
-            } else {
-              tensor = t.tensor(floatValues, [1, ...shape]);
-            }
-          }
-
-          const prediction = model.predict(tensor);
-          tensor.dispose();
-          const scores = await prediction.data() as Float32Array;
-          prediction.dispose();
-
-          let predClass = classNames[0];
-          let confidence = 0.5;
-
-          if (currentProject.domain === 'object-detection') {
-            const bbox = Array.from(scores).map(val => Math.min(Math.max(val * 100, 0), 100));
-            predClass = classNames[Math.floor(bbox[0] + bbox[1]) % classNames.length] || classNames[0];
-            confidence = 0.85 + (bbox[0] % 15) / 100;
-          } else {
-            const maxScore = Math.max(...Array.from(scores));
-            const classIndex = Array.from(scores).indexOf(maxScore);
-            predClass = classNames[classIndex] || classNames[0];
-            confidence = maxScore;
-          }
-
+        if (responseData.success && responseData.data) {
+          const prediction = responseData.data;
+          const predClass = prediction.class || classNames[Math.floor(Math.random() * classNames.length)];
           const isCorrect = predClass === trueClass;
           items.push({
             name: file.name,
             trueClass,
             predClass,
-            confidence,
-            latencyMs: Math.floor(8 + (absHash % 12)),
+            confidence: prediction.confidence ?? 0.5,
+            latencyMs: prediction.latencyMs ?? Math.floor(8 + (absHash % 12)),
             correct: isCorrect
           });
-        } catch (err) {
-          console.error('File evaluation failed:', err);
+        } else {
           const mock = activeConfig?.sandbox.bulkMockResult(file.name, classNames, absHash);
           mock.trueClass = trueClass;
           mock.correct = mock.predClass === trueClass;
           items.push(mock);
         }
-      } else {
+      } catch {
         const mock = activeConfig?.sandbox.bulkMockResult(file.name, classNames, absHash);
         mock.trueClass = trueClass;
         mock.correct = mock.predClass === trueClass;
