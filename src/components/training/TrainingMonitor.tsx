@@ -579,7 +579,7 @@ print("PyTorch model ready for scaling!")
 
       if (currentProject.domain === 'llm-finetuning') {
         perplexity = Math.exp(loss);
-        perplexity = parseFloat(Math.min(perplexity, 100).toFixed(2));
+        perplexity = parseFloat(perplexity.toFixed(2));
         const batchSize = etl.batchSize || 32;
         const seqLen = 100;
         tokens_per_sec = parseFloat(((batchSize * seqLen) / (timeMs / 1000)).toFixed(1));
