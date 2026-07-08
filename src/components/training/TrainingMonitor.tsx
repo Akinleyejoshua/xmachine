@@ -646,6 +646,9 @@ print("PyTorch model ready for scaling!")
           checkpointUrl: `/api/checkpoints/download?projectId=${currentProject.id}&epoch=${epoch}`
         }, checkpointArtifact);
 
+        // Save to IndexedDB for client-side inference
+        try { await saveModel(model, currentProject.id); } catch (e) { /* ignore */ }
+
         setLogs(prev => [
           ...prev,
           `[CHECKPOINT] Epoch ${epoch} weights saved successfully (vram: ${vramUsage}GB used)`
