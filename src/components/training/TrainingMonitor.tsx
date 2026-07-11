@@ -109,15 +109,13 @@ const generateRealBatch = async (
     const xs = t.stack(images);
     images.forEach(img => img.dispose());
 
-    const ys = classNames.length === 2 ? t.tensor1d(labels, 'float32') : t.oneHot(t.tensor1d(labels, 'int32'), classNames.length);
+    const ys = t.oneHot(t.tensor1d(labels, 'int32'), classNames.length);
     
     // Validate that xs and ys have the same number of samples
     if (xs.shape[0] !== ys.shape[0]) {
       console.warn(`[training] Mismatch in samples: xs has ${xs.shape[0]} samples, ys has ${ys.shape[0]} samples. Adjusting ys to match xs.`);
       // Slice ys to match the number of samples in xs
-      const adjustedYs = classNames.length === 2
-        ? t.tensor1d(labels.slice(0, xs.shape[0]), 'float32')
-        : t.oneHot(t.tensor1d(labels.slice(0, xs.shape[0]), 'int32'), classNames.length);
+      const adjustedYs = t.oneHot(t.tensor1d(labels.slice(0, xs.shape[0]), 'int32'), classNames.length);
       return { xs, ys: adjustedYs };
     }
     
@@ -689,10 +687,7 @@ print("PyTorch model ready for scaling!");
                     // Pad valYs with default values (class 0) to match valXs
                     const padding = valXs.shape[0] - valYs.shape[0];
                     const defaultValues = t.tensor1d(Array(padding).fill(0), 'int32');
-                    const valElementCount = padding * valYs.shape.slice(1).reduce((a: number, b: number) => a * b, 1);
-                    const paddedValYs = classNames.length === 2
-                      ? t.concat([valYs, t.tensor(Array(valElementCount).fill(0), [padding, ...valYs.shape.slice(1)], 'float32')])
-                      : t.concat([valYs, t.oneHot(defaultValues, valYs.shape[1] || classNames.length).reshape([padding, ...valYs.shape.slice(1)])]);
+                    const paddedValYs = t.concat([valYs, t.oneHot(defaultValues, valYs.shape[1] || classNames.length).reshape([padding, ...valYs.shape.slice(1)])]);
                     valYs = paddedValYs;
                   } else {
                     // Slice valXs to match valYs
@@ -718,10 +713,7 @@ print("PyTorch model ready for scaling!");
               // Pad ys with default values (class 0) to match xs
               const padding = xs.shape[0] - ys.shape[0];
               const defaultValues = t.tensor1d(Array(padding).fill(0), 'int32');
-              const ysElementCount = padding * ys.shape.slice(1).reduce((a: number, b: number) => a * b, 1);
-              const paddedYs = classNames.length === 2
-                ? t.concat([ys, t.tensor(Array(ysElementCount).fill(0), [padding, ...ys.shape.slice(1)], 'float32')])
-                : t.concat([ys, t.oneHot(defaultValues, ys.shape[1] || classNames.length).reshape([padding, ...ys.shape.slice(1)])]);
+              const paddedYs = t.concat([ys, t.oneHot(defaultValues, ys.shape[1] || classNames.length).reshape([padding, ...ys.shape.slice(1)])]);
               ys = paddedYs;
             } else {
               // Slice xs to match ys
@@ -742,16 +734,7 @@ print("PyTorch model ready for scaling!");
             const targetShape = outShape.map((d: any) => d === null || d === -1 ? -1 : d);
             console.log(`[training] Model output shape: ${targetShape}, valYs shape: ${valYs.shape}`);
             
-            // Ensure valYs has an even number of samples if the model expects [*, 2]
-            if (targetShape.slice(1).some((d: number) => d === 2) && valYs.shape[0] % 2 !== 0) {
-              console.warn(`[training] valYs has an odd number of samples (${valYs.shape[0]}). Padding with a default value.`);
-              // Pad valYs with a default value (class 0) to make the count even
-              const padding = 1;
-              const defaultValues = t.tensor1d(Array(padding).fill(0), 'int32');
-              valYs = classNames.length === 2
-                ? t.concat([valYs, t.tensor1d(Array(padding).fill(0), 'float32')])
-                : t.concat([valYs, t.oneHot(defaultValues, classNames.length)]);
-            }
+            // valYs is already correctly one-hot encoded and aligned with valXs
             
             if (valYs.shape.length !== targetShape.length || valYs.shape.slice(1).some((d: number, i: number) => d !== targetShape[i + 1] && targetShape[i + 1] !== -1)) {
               console.warn(`[training] Reshaping valYs from ${valYs.shape} to match model output shape: ${targetShape}`);
