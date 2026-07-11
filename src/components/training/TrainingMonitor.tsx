@@ -395,6 +395,9 @@ print("PyTorch model ready for scaling!")
   const handleStartTraining = async () => {
     if (trainingStatus === 'training') return;
 
+    // Cancel any existing training loop to prevent duplicate runs
+    if (intervalRef.current) { clearTimeout(intervalRef.current); intervalRef.current = null; }
+
     const startEpoch = resumeFromCheckpoint && lastCheckpoint ? lastCheckpoint.epoch : 0;
     const targetEpoch = resumeFromCheckpoint && lastCheckpoint
       ? lastCheckpoint.epoch + maxEpochs
@@ -427,6 +430,9 @@ print("PyTorch model ready for scaling!")
     let isStepRunning = false;
     let inputShape: number[] = [];
 
+    // Set status immediately to prevent concurrent starts during async model build
+    setTrainingStatus('training');
+
     try {
       const t = await getTf();
       inputShape = buildInputShape(currentProject.domain, modelConfig);
@@ -443,7 +449,6 @@ print("PyTorch model ready for scaling!")
         vocabSize: currentProject.domain === 'llm-finetuning' ? 5000 : undefined,
       });
 
-      setTrainingStatus('training');
       setLogs(prev => [...prev, `[INFO] Model initialized successfully. Input shape: [${inputShape.join(', ')}]`]);
     } catch (err) {
       console.error('Model build failed:', err);
@@ -678,13 +683,13 @@ print("PyTorch model ready for scaling!")
   };
 
   const handlePauseTraining = () => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (intervalRef.current) { clearTimeout(intervalRef.current); intervalRef.current = null; }
     setTrainingStatus('paused');
     setLogs(prev => [...prev, `[PAUSED] Training suspended by operator.`]);
   };
 
   const handleResetTraining = () => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (intervalRef.current) { clearTimeout(intervalRef.current); intervalRef.current = null; }
     setResumeFromCheckpoint(false);
     clearTrainingState();
     setLogs([]);
