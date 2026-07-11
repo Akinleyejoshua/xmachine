@@ -58,11 +58,15 @@ const generateRealBatch = async (
 
       // Use pre-assigned classLabel first, then detect from filename
       const className = file.classLabel || detectFileClass(file.name, classNames);
+      let matchedIndex = -1;
       if (className) {
-        const classIndex = classNames.indexOf(className);
-        labels.push(classIndex !== -1 ? classIndex : 0);
+        matchedIndex = classNames.findIndex(c => c.toLowerCase() === className.toLowerCase());
+      }
+
+      if (matchedIndex !== -1) {
+        labels.push(matchedIndex);
       } else {
-        // Round-robin assignment for files without detectable class
+        // Round-robin assignment for files without detectable or matching class
         // This ensures balanced training when folder structure is missing
         labels.push(images.length % classNames.length);
       }
@@ -94,11 +98,15 @@ const generateRealBatch = async (
       } else {
         samples.push(tokens.slice(0, seqLen));
         const className = file.classLabel || detectFileClass(file.name, classNames);
+        let matchedIndex = -1;
         if (className) {
-          const classIndex = classNames.indexOf(className);
-          targets.push([classIndex !== -1 ? classIndex : 0]);
+          matchedIndex = classNames.findIndex(c => c.toLowerCase() === className.toLowerCase());
+        }
+
+        if (matchedIndex !== -1) {
+          targets.push([matchedIndex]);
         } else {
-          // Round-robin for unlabeled NLP files
+          // Round-robin for unlabeled or unmatched NLP files
           targets.push([samples.length % classNames.length]);
         }
       }

@@ -230,7 +230,7 @@ export const Sandbox: React.FC = () => {
         }
 
         const latencyMs = Math.round(performance.now() - startTime);
-        const isCorrect = predClass === trueClass;
+        const isCorrect = predClass.toLowerCase() === trueClass.toLowerCase();
         items.push({
           name: file.name,
           trueClass,
