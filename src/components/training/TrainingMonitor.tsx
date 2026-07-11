@@ -34,7 +34,37 @@ const generateRealBatch = async (
     }
   }
 
-  const selectedFiles = sliceToBatch ? filesToUse.slice(0, batchSize) : filesToUse;
+  // Balanced sampling: ensure equal representation of all classes
+  let selectedFiles: any[];
+  if (sliceToBatch && isClassification && classNames.length > 1) {
+    const classGroups: Record<string, any[]> = {};
+    for (const f of filesToUse) {
+      const className = f.classLabel || detectFileClass(f.name, classNames);
+      if (className) {
+        if (!classGroups[className]) classGroups[className] = [];
+        classGroups[className].push(f);
+      }
+    }
+    const classesWithFiles = Object.keys(classGroups).filter(c => classGroups[c].length > 0);
+    if (classesWithFiles.length >= 2) {
+      // Balanced sampling: equal samples per class
+      const samplesPerClass = Math.max(1, Math.floor(batchSize / classesWithFiles.length));
+      selectedFiles = [];
+      for (const className of classesWithFiles) {
+        const group = classGroups[className];
+        const shuffled = [...group].sort(() => Math.random() - 0.5);
+        selectedFiles.push(...shuffled.slice(0, samplesPerClass));
+      }
+      // Shuffle the combined batch
+      selectedFiles = selectedFiles.sort(() => Math.random() - 0.5);
+      // Trim to exact batch size
+      selectedFiles = selectedFiles.slice(0, batchSize);
+    } else {
+      selectedFiles = filesToUse.slice(0, batchSize);
+    }
+  } else {
+    selectedFiles = sliceToBatch ? filesToUse.slice(0, batchSize) : filesToUse;
+  }
 
   if (domain === 'cv-classification' || domain === 'object-detection') {
     const [height, width, channels] = inputShape;
@@ -75,7 +105,7 @@ const generateRealBatch = async (
     const xs = t.stack(images);
     images.forEach(img => img.dispose());
 
-    const ys = t.oneHot(t.tensor1d(labels, 'int32'), classNames.length);
+    const ys = classNames.length === 2 ? t.tensor1d(labels, 'float32') : t.oneHot(t.tensor1d(labels, 'int32'), classNames.length);
     return { xs, ys };
   }
 

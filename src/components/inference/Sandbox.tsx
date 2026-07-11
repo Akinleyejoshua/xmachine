@@ -121,10 +121,21 @@ export const Sandbox: React.FC = () => {
         prediction.dispose();
         const scoresArr = Array.from(scores);
         console.log('[inference] raw scores:', scoresArr, 'classNames:', classNames);
-        const maxScore = Math.max(...scoresArr);
-        const classIndex = scoresArr.indexOf(maxScore);
-        const predClass = classIndex >= 0 && classIndex < classNames.length ? classNames[classIndex] : classNames[0];
-        result = { class: predClass, confidence: maxScore, latencyMs: Math.round(performance.now() - startTime) };
+        let predClass: string;
+        let confidence: number;
+        if (scoresArr.length === 1) {
+          // Binary classification with sigmoid output
+          const prob = scoresArr[0];
+          predClass = prob > 0.5 ? classNames[1] : classNames[0];
+          confidence = prob;
+        } else {
+          // Multi-class with softmax output
+          const maxScore = Math.max(...scoresArr);
+          const classIndex = scoresArr.indexOf(maxScore);
+          predClass = classIndex >= 0 && classIndex < classNames.length ? classNames[classIndex] : classNames[0];
+          confidence = maxScore;
+        }
+        result = { class: predClass, confidence, latencyMs: Math.round(performance.now() - startTime) };
       } else if (currentProject.domain === 'nlp') {
         const trimmed = inputVal.trim();
         const tokens = trimmed.split(/\s+/).map((w: string) => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
@@ -137,10 +148,21 @@ export const Sandbox: React.FC = () => {
         prediction.dispose();
         const scoresArr = Array.from(scores);
         console.log('[inference] raw scores:', scoresArr, 'classNames:', classNames);
-        const maxScore = Math.max(...scoresArr);
-        const bestIndex = scoresArr.indexOf(maxScore);
-        const nlpPredClass = bestIndex >= 0 && bestIndex < classNames.length ? classNames[bestIndex] : classNames[0];
-        result = { class: nlpPredClass, sentiment: nlpPredClass, confidence: maxScore, tokens: trimmed.split(' ').length, latencyMs: Math.round(performance.now() - startTime) };
+        let nlpPredClass: string;
+        let nlpConfidence: number;
+        if (scoresArr.length === 1) {
+          // Binary classification with sigmoid output
+          const prob = scoresArr[0];
+          nlpPredClass = prob > 0.5 ? classNames[1] : classNames[0];
+          nlpConfidence = prob;
+        } else {
+          // Multi-class with softmax output
+          const maxScore = Math.max(...scoresArr);
+          const bestIndex = scoresArr.indexOf(maxScore);
+          nlpPredClass = bestIndex >= 0 && bestIndex < classNames.length ? classNames[bestIndex] : classNames[0];
+          nlpConfidence = maxScore;
+        }
+        result = { class: nlpPredClass, sentiment: nlpPredClass, confidence: nlpConfidence, tokens: trimmed.split(' ').length, latencyMs: Math.round(performance.now() - startTime) };
       } else {
         throw new Error(`Client-side inference not supported for domain: ${currentProject.domain}`);
       }

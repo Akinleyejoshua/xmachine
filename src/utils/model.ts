@@ -22,7 +22,8 @@ export interface BuildModelOptions {
 
 export async function buildModel(options: BuildModelOptions): Promise<any> {
   const t: any = await getTf();
-  const { layers: modelLayers, classCount, inputShape, optimizer = 'adam', learningRate = 0.001, loss = 'categoricalCrossentropy' } = options;
+  const { layers: modelLayers, classCount, inputShape, optimizer = 'adam', learningRate = 0.001, loss } = options;
+  const lossName = loss || (classCount === 2 ? 'binaryCrossentropy' : 'categoricalCrossentropy');
   const model = t.sequential();
 
   if (inputShape && inputShape.length > 0) {
@@ -42,7 +43,7 @@ export async function buildModel(options: BuildModelOptions): Promise<any> {
   const lastLayer = modelLayers[modelLayers.length - 1];
   const outputUnits = (lastLayer && typeof lastLayer.config.units === 'number' && lastLayer.config.units === classCount)
     ? classCount : classCount;
-  const outputActivation = 'softmax';
+  const outputActivation = classCount === 2 ? 'sigmoid' : 'softmax';
 
   for (let i = 0; i < modelLayers.length; i++) {
     const layer = modelLayers[i];
@@ -61,7 +62,7 @@ export async function buildModel(options: BuildModelOptions): Promise<any> {
   }
 
   const optimizerFn = buildOptimizer(t, optimizer, learningRate);
-  const lossFn = buildLoss(t, loss);
+  const lossFn = buildLoss(t, lossName);
   model.compile({ optimizer: optimizerFn, loss: lossFn, metrics: ['accuracy'] });
   return model;
 }
