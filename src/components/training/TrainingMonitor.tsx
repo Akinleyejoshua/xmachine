@@ -8,7 +8,8 @@ const generateRealBatch = async (
   domain: string,
   inputShape: number[],
   classNames: string[],
-  batchSize: number
+  batchSize: number,
+  sliceToBatch = false
 ): Promise<{ xs: any; ys: any }> => {
   const t = await import('../../utils/model').then(m => m.getTf());
   
@@ -33,7 +34,7 @@ const generateRealBatch = async (
     }
   }
 
-  const selectedFiles = filesToUse.slice(0, batchSize);
+  const selectedFiles = sliceToBatch ? filesToUse.slice(0, batchSize) : filesToUse;
 
   if (domain === 'cv-classification' || domain === 'object-detection') {
     const [height, width, channels] = inputShape;
@@ -143,7 +144,7 @@ import {
 } from 'lucide-react';
 import { DOMAIN_CONFIGS } from '../../config/domain/registry';
 import { buildModel, getTf } from '../../utils/model';
-import { saveModel } from '../../utils/training';
+import { saveModel, loadModel } from '../../utils/training';
 
 type ChartType = 'line' | 'area' | 'bar' | 'scatter' | 'smooth';
 
@@ -219,6 +220,19 @@ export const TrainingMonitor: React.FC = () => {
       consoleBottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [logs]);
+
+  // Clean up training timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearTimeout(intervalRef.current);
+        intervalRef.current = null;
+      }
+      if (usePipelineStore.getState().trainingStatus === 'training') {
+        usePipelineStore.getState().setTrainingStatus('paused');
+      }
+    };
+  }, []);
 
   // Telemetry updates simulation
   useEffect(() => {
@@ -438,16 +452,33 @@ print("PyTorch model ready for scaling!")
       inputShape = buildInputShape(currentProject.domain, modelConfig);
       const classCount = etl.classNames?.length || 2;
 
-      model = await buildModel({
-        layers: modelConfig.layers,
-        classCount,
-        inputShape,
-        optimizer: modelConfig.hyperparameters.optimizer,
-        learningRate: modelConfig.hyperparameters.learningRate,
-        loss: modelConfig.hyperparameters.loss,
-        domain: currentProject.domain,
-        vocabSize: currentProject.domain === 'llm-finetuning' ? 5000 : undefined,
-      });
+      if (resumeFromCheckpoint && lastCheckpoint) {
+        try {
+          model = await loadModel(currentProject.id);
+          if (model) {
+            // Recompile loaded model to apply current hyperparameters (optimizer, learning rate, loss)
+            const optimizerFn = await import('../../utils/model').then(m => m.buildOptimizer(t, modelConfig.hyperparameters.optimizer, modelConfig.hyperparameters.learningRate));
+            const lossFn = await import('../../utils/model').then(m => m.buildLoss(t, modelConfig.hyperparameters.loss));
+            model.compile({ optimizer: optimizerFn, loss: lossFn, metrics: ['accuracy'] });
+            setLogs(prev => [...prev, `[INFO] Model weights and architecture successfully restored from IndexedDB.`]);
+          }
+        } catch (loadErr) {
+          console.warn('Failed to load model from IndexedDB, falling back to build:', loadErr);
+        }
+      }
+
+      if (!model) {
+        model = await buildModel({
+          layers: modelConfig.layers,
+          classCount,
+          inputShape,
+          optimizer: modelConfig.hyperparameters.optimizer,
+          learningRate: modelConfig.hyperparameters.learningRate,
+          loss: modelConfig.hyperparameters.loss,
+          domain: currentProject.domain,
+          vocabSize: currentProject.domain === 'llm-finetuning' ? 5000 : undefined,
+        });
+      }
 
       setLogs(prev => [...prev, `[INFO] Model initialized successfully. Input shape: [${inputShape.join(', ')}]`]);
     } catch (err) {
@@ -566,7 +597,11 @@ print("PyTorch model ready for scaling!")
 
       if (useRealTraining && model && xs && ys) {
         try {
-          const history = await model.fit(xs, ys, { epochs: 1, shuffle: etl.shuffle });
+          const history = await model.fit(xs, ys, { 
+            epochs: 1, 
+            batchSize: etl.batchSize || 32, 
+            shuffle: etl.shuffle 
+          });
           loss = history.history.loss[0] ?? loss;
           accuracy = history.history.acc?.[0] ?? history.history.accuracy?.[0] ?? accuracy;
 
