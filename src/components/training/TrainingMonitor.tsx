@@ -1309,7 +1309,7 @@ print("PyTorch model ready for scaling!")
                       </thead>
                       <tbody className="divide-y divide-neutral-100 dark:divide-neutral-900 font-mono">
                         {metricsHistory.map((m, idx) => (
-                          <tr key={`metric-${(m as any).epoch || idx}`} className="hover:bg-neutral-100 dark:hover:bg-neutral-850/60 transition-colors">
+                          <tr key={`metric-row-${idx}`} className="hover:bg-neutral-100 dark:hover:bg-neutral-850/60 transition-colors">
                             <td className="py-2 pl-4 font-sans text-neutral-500 dark:text-neutral-400 text-[11px]">Ep {(m as any).epoch}</td>
                             {activeConfig.training.metrics.map(met => {
                               const val = (m as any)[met.id];
