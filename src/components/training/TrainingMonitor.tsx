@@ -17,7 +17,23 @@ const generateRealBatch = async (
     throw new Error("No files with rawContent found.");
   }
 
-  const selectedFiles = validFiles.slice(0, batchSize);
+  // For classification domains, pre-filter to only files with a detectable class
+  // to avoid mislabeling unclassifiable files as class 0
+  const isClassification = domain === 'cv-classification' || domain === 'object-detection' || domain === 'nlp';
+  let filesToUse = validFiles;
+  if (isClassification && classNames.length > 0) {
+    const labeledFiles = validFiles.filter(f => {
+      const label = f.classLabel || detectFileClass(f.name, classNames);
+      return label !== null && label !== undefined;
+    });
+    // Only use labeled files if we have enough; otherwise fall back to all files
+    // with round-robin class assignment
+    if (labeledFiles.length >= Math.min(batchSize, 2)) {
+      filesToUse = labeledFiles;
+    }
+  }
+
+  const selectedFiles = filesToUse.slice(0, batchSize);
 
   if (domain === 'cv-classification' || domain === 'object-detection') {
     const [height, width, channels] = inputShape;
@@ -39,9 +55,16 @@ const generateRealBatch = async (
       tensor = tensor.resizeBilinear([height, width]).toFloat().div(255);
       images.push(tensor);
 
-      const className = detectFileClass(file.name, classNames) || classNames[0];
-      const classIndex = classNames.indexOf(className);
-      labels.push(classIndex !== -1 ? classIndex : 0);
+      // Use pre-assigned classLabel first, then detect from filename
+      const className = file.classLabel || detectFileClass(file.name, classNames);
+      if (className) {
+        const classIndex = classNames.indexOf(className);
+        labels.push(classIndex !== -1 ? classIndex : 0);
+      } else {
+        // Round-robin assignment for files without detectable class
+        // This ensures balanced training when folder structure is missing
+        labels.push(images.length % classNames.length);
+      }
     }
 
     console.log('[training] labels distribution:', labels.reduce((acc: Record<number,number>, l: number) => { acc[l] = (acc[l]||0)+1; return acc; }, {}), 'classNames:', classNames);
@@ -69,13 +92,18 @@ const generateRealBatch = async (
         targets.push(tokens.slice(1, seqLen + 1));
       } else {
         samples.push(tokens.slice(0, seqLen));
-        const className = detectFileClass(file.name, classNames) || classNames[0];
-        const classIndex = classNames.indexOf(className);
-        targets.push([classIndex !== -1 ? classIndex : 0]);
+        const className = file.classLabel || detectFileClass(file.name, classNames);
+        if (className) {
+          const classIndex = classNames.indexOf(className);
+          targets.push([classIndex !== -1 ? classIndex : 0]);
+        } else {
+          // Round-robin for unlabeled NLP files
+          targets.push([samples.length % classNames.length]);
+        }
       }
     }
 
-    const xs = t.tensor2d(samples, [batchSize, seqLen]);
+    const xs = t.tensor2d(samples, [samples.length, seqLen]);
     const ys = isLLM
       ? t.oneHot(t.tensor1d(targets.map(t => t[0]), 'int32'), 5000)
       : t.oneHot(t.tensor1d(targets.map(t => t[0]), 'int32'), classNames.length);
@@ -100,8 +128,8 @@ const generateRealBatch = async (
       targets.push(target);
     }
 
-    const xs = t.tensor3d(samples.map(seq => seq.map(v => [v])), [batchSize, lookbackLen, 1]);
-    const ys = t.tensor2d(targets, [batchSize, 1]);
+    const xs = t.tensor3d(samples.map(seq => seq.map(v => [v])), [samples.length, lookbackLen, 1]);
+    const ys = t.tensor2d(targets.map(v => [v]), [samples.length, 1]);
     return { xs, ys };
   }
 

@@ -27,6 +27,7 @@ export interface DatasetFile {
   type: FileType;
   rawContent?: string | ArrayBuffer; // Cache raw content for in-memory processing
   previewData?: any[]; // Preview rows or image URLs
+  classLabel?: string; // Explicitly assigned class label (from folder structure or user assignment)
 }
 
 export type TextTransformActionType =

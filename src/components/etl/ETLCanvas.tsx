@@ -23,21 +23,49 @@ import {
 
 export const detectFileClass = (fileName: string, classNames: string[]): string | null => {
   if (!classNames || classNames.length === 0) return null;
-  const name = fileName.toLowerCase();
+
+  // 1. Folder-based detection (most reliable for image datasets: class_name/image.jpg)
+  //    Check parent folder against class names with an exact match
+  const pathParts = fileName.replace(/\\/g, '/').split('/');
+  if (pathParts.length > 1) {
+    // Walk up from the immediate parent to ancestors (prefer closest parent)
+    for (let depth = pathParts.length - 2; depth >= 0; depth--) {
+      const folder = pathParts[depth].toLowerCase().trim();
+      if (!folder) continue;
+      // Exact folder name match first
+      const exactMatch = classNames.find(c => c.toLowerCase().trim() === folder);
+      if (exactMatch) return exactMatch;
+    }
+    // Partial folder match (folder contains class name as a word)
+    for (let depth = pathParts.length - 2; depth >= 0; depth--) {
+      const folder = pathParts[depth].toLowerCase().trim();
+      if (!folder) continue;
+      for (const c of classNames) {
+        const term = c.toLowerCase().trim();
+        // Word-boundary match within folder name
+        const re = new RegExp(`(?:^|[\\s_\\-\\.])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[\\s_\\-\\.])`, 'i');
+        if (re.test(folder)) return c;
+      }
+    }
+  }
+
+  // 2. Filename-based detection using word-boundary matching on just the basename
+  //    This avoids false positives like "no" matching "photo"
+  const basename = pathParts[pathParts.length - 1].toLowerCase();
+  // Remove file extension for matching
+  const nameWithoutExt = basename.replace(/\.[^.]+$/, '');
 
   for (const c of classNames) {
     const term = c.toLowerCase().trim();
-    if (name.includes(term)) return c;
+    // Word-boundary match: class name must appear as a standalone word/segment
+    // Separated by start/end of string, underscores, hyphens, dots, spaces, or digits-to-letters boundary
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?:^|[\\s_\\-\\.\\(\\)\\[\\]])${escaped}(?:$|[\\s_\\-\\.\\(\\)\\[\\]])`, 'i');
+    if (re.test(nameWithoutExt)) return c;
+    // Also check if the entire basename starts with the class name followed by a separator
+    if (nameWithoutExt.startsWith(term + '_') || nameWithoutExt.startsWith(term + '-') || nameWithoutExt.startsWith(term + '.') || nameWithoutExt === term) return c;
   }
 
-  if (fileName.includes('/')) {
-    const parts = fileName.split('/');
-    if (parts.length > 1) {
-      const parentFolder = parts[parts.length - 2].toLowerCase().trim();
-      const matched = classNames.find(c => c.toLowerCase().trim() === parentFolder);
-      if (matched) return matched;
-    }
-  }
   return null;
 };
 
@@ -228,12 +256,16 @@ export const ETLCanvas: React.FC = () => {
           }
         });
 
+        const filePath = (file as any).webkitRelativePath || file.name;
+        const detectedClass = detectFileClass(filePath, etl.classNames);
+
         return {
           id: Math.random().toString(36).substring(7),
-          name: (file as any).webkitRelativePath || file.name,
+          name: filePath,
           size: file.size,
           type,
           rawContent,
+          classLabel: detectedClass || undefined,
         };
       });
 
@@ -440,7 +472,7 @@ export const ETLCanvas: React.FC = () => {
               </div>
               <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
               {etl.files.map(file => {
-                const detectedClass = detectFileClass(file.name, etl.classNames);
+                const detectedClass = file.classLabel || detectFileClass(file.name, etl.classNames);
                 return (
                   <div key={file.id} className="flex items-center justify-between p-3 bg-white dark:bg-neutral-950 rounded-lg shadow-sm">
                     <div className="flex items-center gap-3">

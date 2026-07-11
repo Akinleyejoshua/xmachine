@@ -179,7 +179,7 @@ export const Sandbox: React.FC = () => {
     const items: BulkItem[] = [];
 
     for (const file of filesToEvaluate) {
-      let trueClass = detectFileClass(file.name, classNames);
+      let trueClass = file.classLabel || detectFileClass(file.name, classNames);
       console.log(trueClass, 'detected true class for file:', file.name);
       if (!trueClass) {
         trueClass = 'Unknown';
