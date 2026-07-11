@@ -54,7 +54,6 @@ const generateRealBatch = async (
 
       let tensor = t.browser.fromPixels(img);
       tensor = tensor.resizeBilinear([height, width]).toFloat().div(255);
-      images.push(tensor);
 
       // Use pre-assigned classLabel first, then detect from filename
       const className = file.classLabel || detectFileClass(file.name, classNames);
@@ -62,13 +61,12 @@ const generateRealBatch = async (
       if (className) {
         matchedIndex = classNames.findIndex(c => c.toLowerCase() === className.toLowerCase());
       }
-
       if (matchedIndex !== -1) {
         labels.push(matchedIndex);
+        images.push(tensor);
       } else {
-        // Round-robin assignment for files without detectable or matching class
-        // This ensures balanced training when folder structure is missing
-        labels.push(images.length % classNames.length);
+        // Skip files without detectable or matching class to avoid mislabeling
+        tensor.dispose();
       }
     }
 
@@ -105,9 +103,9 @@ const generateRealBatch = async (
 
         if (matchedIndex !== -1) {
           targets.push([matchedIndex]);
+          samples.push(tokens.slice(0, seqLen));
         } else {
-          // Round-robin for unlabeled or unmatched NLP files
-          targets.push([samples.length % classNames.length]);
+          // Skip files without detectable or matching class to avoid mislabeling
         }
       }
     }
@@ -395,7 +393,7 @@ def train(model, dataloader, epochs=${maxEpochs}):
         if '${lrScheduler}' != 'constant':
             scheduler.step()
 
-print("PyTorch model ready for scaling!")
+print("PyTorch model ready for scaling!");
 `;
   };
 
@@ -561,7 +559,12 @@ print("PyTorch model ready for scaling!")
           let trainFiles = shuffled.slice(0, splitIndex);
           let valFiles = shuffled.slice(splitIndex);
           if (trainFiles.length === 0) trainFiles = shuffled;
-          if (valFiles.length === 0) valFiles = trainFiles;
+          if (valFiles.length === 0) {
+            // Create validation split from training data instead of using identical data
+            const valSplitIndex = Math.max(1, Math.floor(trainFiles.length * 0.2));
+            valFiles = trainFiles.slice(valSplitIndex);
+            trainFiles = trainFiles.slice(0, valSplitIndex);
+          }
 
           const batchSize = etl.batchSize || 32;
           const maxSamples = etl.maxSamples || 200;

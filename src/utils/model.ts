@@ -142,7 +142,7 @@ export function buildLoss(tf: any, name: string): string {
   switch (name) {
     case 'meanSquaredError': return 'meanSquaredError';
     case 'binaryCrossentropy': return 'binaryCrossentropy';
-    case 'sparseCategoricalCrossentropy': return 'categoricalCrossentropy';
+    case 'sparseCategoricalCrossentropy': return 'sparseCategoricalCrossentropy';
     case 'meanAbsoluteError': return 'meanAbsoluteError';
     case 'quantileLoss': return 'meanAbsoluteError';
     case 'categoricalCrossentropy': default: return 'categoricalCrossentropy';
