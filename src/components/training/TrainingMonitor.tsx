@@ -692,7 +692,7 @@ print("PyTorch model ready for scaling!");
                     const valElementCount = padding * valYs.shape.slice(1).reduce((a: number, b: number) => a * b, 1);
                     const paddedValYs = classNames.length === 2
                       ? t.concat([valYs, t.tensor(Array(valElementCount).fill(0), [padding, ...valYs.shape.slice(1)], 'float32')])
-                      : t.concat([valYs, t.oneHot(defaultValues, classNames.length).reshape([padding, ...valYs.shape.slice(1)])]);
+                      : t.concat([valYs, t.oneHot(defaultValues, valYs.shape[1] || classNames.length).reshape([padding, ...valYs.shape.slice(1)])]);
                     valYs = paddedValYs;
                   } else {
                     // Slice valXs to match valYs
@@ -704,7 +704,7 @@ print("PyTorch model ready for scaling!");
             }
           }
         } catch (err) {
-          console.error('Batch generation failed:', err);
+          console.warn('Batch generation failed:', err);
           setLogs(prev => [...prev, `[ERROR] Batch generation failed: ${err}`]);
         }
       }
@@ -721,7 +721,7 @@ print("PyTorch model ready for scaling!");
               const ysElementCount = padding * ys.shape.slice(1).reduce((a: number, b: number) => a * b, 1);
               const paddedYs = classNames.length === 2
                 ? t.concat([ys, t.tensor(Array(ysElementCount).fill(0), [padding, ...ys.shape.slice(1)], 'float32')])
-                : t.concat([ys, t.oneHot(defaultValues, classNames.length).reshape([padding, ...ys.shape.slice(1)])]);
+                : t.concat([ys, t.oneHot(defaultValues, ys.shape[1] || classNames.length).reshape([padding, ...ys.shape.slice(1)])]);
               ys = paddedYs;
             } else {
               // Slice xs to match ys
@@ -751,7 +751,7 @@ print("PyTorch model ready for scaling!");
             }
           }
         } catch (err) {
-          console.error('Training step failed:', err);
+          console.warn('Training step failed:', err);
           setLogs(prev => [...prev, `[ERROR] Training step failed: ${err}`]);
         }
       }
