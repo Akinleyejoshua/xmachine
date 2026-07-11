@@ -737,6 +737,31 @@ print("PyTorch model ready for scaling!");
           accuracy = history.history.acc?.[0] ?? history.history.accuracy?.[0] ?? accuracy;
 
           if (valXs && valYs) {
+            // Ensure valYs matches the model's output shape
+            const outShape = model.outputs[0].shape;
+            const targetShape = outShape.map((d: any) => d === null || d === -1 ? -1 : d);
+            console.log(`[training] Model output shape: ${targetShape}, valYs shape: ${valYs.shape}`);
+            
+            // Ensure valYs has an even number of samples if the model expects [*, 2]
+            if (targetShape.slice(1).some((d: number) => d === 2) && valYs.shape[0] % 2 !== 0) {
+              console.warn(`[training] valYs has an odd number of samples (${valYs.shape[0]}). Padding with a default value.`);
+              // Pad valYs with a default value (class 0) to make the count even
+              const padding = 1;
+              const defaultValues = t.tensor1d(Array(padding).fill(0), 'int32');
+              valYs = classNames.length === 2
+                ? t.concat([valYs, t.tensor1d(Array(padding).fill(0), 'float32')])
+                : t.concat([valYs, t.oneHot(defaultValues, classNames.length)]);
+            }
+            
+            if (valYs.shape.length !== targetShape.length || valYs.shape.slice(1).some((d: number, i: number) => d !== targetShape[i + 1] && targetShape[i + 1] !== -1)) {
+              console.warn(`[training] Reshaping valYs from ${valYs.shape} to match model output shape: ${targetShape}`);
+              try {
+                valYs = valYs.reshape([-1, ...targetShape.slice(1)]);
+              } catch (e) {
+                console.error(`[training] Failed to reshape valYs: ${e}`);
+              }
+            }
+            
             const evalResult = model.evaluate(valXs, valYs);
             if (Array.isArray(evalResult)) {
               const valLossVal = await evalResult[0].data();
