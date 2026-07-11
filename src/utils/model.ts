@@ -38,17 +38,18 @@ export async function buildModel(options: BuildModelOptions): Promise<any> {
     model.add(t.layers.flatten({}));
   }
 
-  // Determine output units: use classCount, or the last layer's units if it matches
+  // Determine output units and activation
   const lastLayer = modelLayers[modelLayers.length - 1];
   const outputUnits = (lastLayer && typeof lastLayer.config.units === 'number' && lastLayer.config.units === classCount)
     ? classCount : classCount;
-  const outputActivation = classCount > 2 ? 'softmax' : 'sigmoid';
+  const outputActivation = 'softmax';
 
   for (let i = 0; i < modelLayers.length; i++) {
     const layer = modelLayers[i];
     // If this is the last dense layer and its units don't match, override
     if (i === modelLayers.length - 1 && layer.type === 'dense' && typeof layer.config.units === 'number' && layer.config.units !== classCount) {
-      model.add(t.layers.dense({ ...layer.config, units: outputUnits, activation: outputActivation }));
+      const { inputShape: _, ...restConfig } = layer.config;
+      model.add(t.layers.dense({ ...restConfig, units: outputUnits, activation: outputActivation }));
     } else {
       model.add(createLayer(t, layer));
     }
@@ -70,7 +71,7 @@ export function createLayer(tf: any, layer: ModelLayer) {
 
   switch (layer.type) {
     case 'conv2d': {
-      const { activation, padding, strides, dropout, l2, ...rest } = cfg;
+      const { activation, padding, strides, dropout, l2, inputShape, ...rest } = cfg;
       const regularizer = typeof l2 === 'number' && l2 > 0 ? tf.regularizers.l2({ l2 }) : undefined;
       return tf.layers.conv2d({
         activation: activation || 'relu',
@@ -81,7 +82,7 @@ export function createLayer(tf: any, layer: ModelLayer) {
       });
     }
     case 'conv1d': {
-      const { activation, padding, strides, ...rest } = cfg;
+      const { activation, padding, strides, inputShape, ...rest } = cfg;
       return tf.layers.conv1d({
         activation: activation || 'relu',
         padding: padding || 'same',
@@ -90,7 +91,7 @@ export function createLayer(tf: any, layer: ModelLayer) {
       });
     }
     case 'maxPooling2d': {
-      const { poolSize, strides } = cfg;
+      const { poolSize, strides, inputShape } = cfg;
       return tf.layers.maxPooling2d({
         poolSize: Array.isArray(poolSize) ? poolSize : [poolSize || 2, poolSize || 2],
         strides: Array.isArray(strides) ? strides : [strides || 2, strides || 2],
@@ -99,7 +100,7 @@ export function createLayer(tf: any, layer: ModelLayer) {
     case 'flatten':
       return tf.layers.flatten({});
     case 'dense': {
-      const { activation, units, dropout, l2, ...rest } = cfg;
+      const { activation, units, dropout, l2, inputShape, ...rest } = cfg;
       const regularizer = typeof l2 === 'number' && l2 > 0 ? tf.regularizers.l2({ l2 }) : undefined;
       return tf.layers.dense({ activation: activation || 'relu', units: units || 64, kernelRegularizer: regularizer, ...rest });
     }

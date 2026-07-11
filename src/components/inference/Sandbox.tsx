@@ -76,6 +76,11 @@ export const Sandbox: React.FC = () => {
 
   const getInputShape = (domain: string): number[] => {
     const cfg = DOMAIN_CONFIGS[domain as keyof typeof DOMAIN_CONFIGS];
+    const state = usePipelineStore.getState();
+    const userLayers = state.modelConfig?.layers;
+    const firstUser = userLayers?.length ? userLayers[0]?.config : null;
+    if (firstUser?.inputShape) return firstUser.inputShape as number[];
+    if (firstUser?.inputLength) return [firstUser.inputLength as number];
     const first = cfg?.modelBuilder?.defaultLayers?.[0];
     if (domain === 'nlp' || domain === 'llm-finetuning') return [(first?.config?.inputLength as number) || 100];
     if (domain === 'time-series-forecasting') return [30, 1];
@@ -118,7 +123,8 @@ export const Sandbox: React.FC = () => {
         console.log('[inference] raw scores:', scoresArr, 'classNames:', classNames);
         const maxScore = Math.max(...scoresArr);
         const classIndex = scoresArr.indexOf(maxScore);
-        result = { class: classNames[classIndex] || classNames[0], confidence: maxScore, latencyMs: Math.round(performance.now() - startTime) };
+        const predClass = classIndex >= 0 && classIndex < classNames.length ? classNames[classIndex] : classNames[0];
+        result = { class: predClass, confidence: maxScore, latencyMs: Math.round(performance.now() - startTime) };
       } else if (currentProject.domain === 'nlp') {
         const trimmed = inputVal.trim();
         const tokens = trimmed.split(/\s+/).map((w: string) => Math.abs(w.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 5000);
@@ -133,7 +139,8 @@ export const Sandbox: React.FC = () => {
         console.log('[inference] raw scores:', scoresArr, 'classNames:', classNames);
         const maxScore = Math.max(...scoresArr);
         const bestIndex = scoresArr.indexOf(maxScore);
-        result = { class: classNames[bestIndex] || classNames[0], sentiment: classNames[bestIndex] || classNames[0], confidence: maxScore, tokens: trimmed.split(' ').length, latencyMs: Math.round(performance.now() - startTime) };
+        const nlpPredClass = bestIndex >= 0 && bestIndex < classNames.length ? classNames[bestIndex] : classNames[0];
+        result = { class: nlpPredClass, sentiment: nlpPredClass, confidence: maxScore, tokens: trimmed.split(' ').length, latencyMs: Math.round(performance.now() - startTime) };
       } else {
         throw new Error(`Client-side inference not supported for domain: ${currentProject.domain}`);
       }
@@ -173,8 +180,9 @@ export const Sandbox: React.FC = () => {
 
     for (const file of filesToEvaluate) {
       let trueClass = detectFileClass(file.name, classNames);
+      console.log(trueClass, 'detected true class for file:', file.name);
       if (!trueClass) {
-        trueClass = classNames[0] || 'Unknown';
+        trueClass = 'Unknown';
       }
 
       try {
@@ -199,7 +207,7 @@ export const Sandbox: React.FC = () => {
           console.log('[bulk-inference] raw scores:', scoresArr, 'file:', file.name, 'trueClass:', trueClass);
           const maxScore = Math.max(...scoresArr);
           const classIndex = scoresArr.indexOf(maxScore);
-          predClass = classNames[classIndex] || classNames[0];
+          predClass = classIndex >= 0 && classIndex < classNames.length ? classNames[classIndex] : classNames[0];
           confidence = maxScore;
         } else if (currentProject.domain === 'nlp') {
           const inputVal = typeof file.rawContent === 'string' ? file.rawContent : file.name;
@@ -212,10 +220,11 @@ export const Sandbox: React.FC = () => {
           const scores = await prediction.data() as Float32Array;
           inputTensor.dispose();
           prediction.dispose();
-          const maxScore = Math.max(...Array.from(scores));
-          const bestIndex = Array.from(scores).indexOf(maxScore);
-          predClass = classNames[bestIndex] || classNames[0];
-          confidence = maxScore;
+          const scoresArrNlp = Array.from(scores);
+          const maxScoreNlp = Math.max(...scoresArrNlp);
+          const bestIndex = scoresArrNlp.indexOf(maxScoreNlp);
+          predClass = bestIndex >= 0 && bestIndex < classNames.length ? classNames[bestIndex] : classNames[0];
+          confidence = maxScoreNlp;
         } else {
           throw new Error(`Client-side bulk inference not supported for domain: ${currentProject.domain}`);
         }
